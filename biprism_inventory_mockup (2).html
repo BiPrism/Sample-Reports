@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Company XYZ – Inventory Intelligence</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f3f2f1; --panel: #ffffff; --border: #e1dfdd;
+    --accent: #0078d4; --accent2: #107c10; --warn: #d83b01; --warn2: #b07800;
+    --text: #252423; --subtext: #605e5c;
+    --header-bg: #1b3a2f; --header-fg: #ffffff;
+    --shadow: 0 1px 4px rgba(0,0,0,0.12); --radius: 4px;
+  }
+  body { font-family: 'Segoe UI','Helvetica Neue',Arial,sans-serif; background: var(--bg); color: var(--text); font-size: 13px; min-height: 100vh; }
+
+  .pbi-header { background: var(--header-bg); color: var(--header-fg); padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; }
+  .report-title { font-size: 16px; font-weight: 700; }
+  .report-sub { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+  .tabs { display: flex; gap: 4px; }
+  .tab-btn { background: rgba(255,255,255,0.12); border: none; color: #fff; padding: 5px 14px; border-radius: 3px; cursor: pointer; font-size: 12px; font-family: inherit; transition: background 0.15s; }
+  .tab-btn.active { background: rgba(255,255,255,0.28); font-weight: 700; }
+  .tab-btn:hover { background: rgba(255,255,255,0.22); }
+
+  .filter-bar { background: var(--panel); border-bottom: 1px solid var(--border); padding: 8px 20px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .filter-group { display: flex; align-items: center; gap: 6px; }
+  .filter-label { font-size: 11px; color: var(--subtext); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+  .slicer-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+  .chip { padding: 3px 10px; border-radius: 12px; border: 1px solid var(--border); background: #fff; cursor: pointer; font-size: 11px; font-family: inherit; color: var(--subtext); transition: all 0.12s; }
+  .chip.active { background: #deeffe; border-color: var(--accent); color: var(--accent); font-weight: 700; }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+  .filter-divider { width: 1px; height: 22px; background: var(--border); }
+  .reset-btn { margin-left: auto; background: none; border: 1px solid var(--border); padding: 3px 12px; border-radius: 3px; cursor: pointer; font-size: 11px; font-family: inherit; color: var(--subtext); }
+  .reset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  #selection-bar { background: #fff4ce; border-bottom: 1px solid #f0d060; padding: 7px 20px; font-size: 12px; color: #7a5700; display: none; align-items: center; gap: 10px; }
+  #selection-bar button { background: none; border: 1px solid #b07800; color: #7a5700; padding: 2px 10px; border-radius: 10px; cursor: pointer; font-size: 11px; font-family: inherit; }
+  #selection-bar .hint { margin-left: auto; font-size: 11px; opacity: 0.7; }
+
+  .canvas { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
+  .kpi-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+  .kpi-card::after { content:''; position:absolute; left:0;top:0;bottom:0;width:4px; }
+  .kpi-card.blue::after  { background: var(--accent); }
+  .kpi-card.green::after { background: var(--accent2); }
+  .kpi-card.red::after   { background: var(--warn); }
+  .kpi-card.yellow::after{ background: var(--warn2); }
+  .kpi-card.teal::after  { background: #00b294; }
+  .kpi-label { font-size: 11px; color: var(--subtext); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+  .kpi-value { font-size: 26px; font-weight: 700; line-height: 1; }
+  .kpi-value.blue   { color: var(--accent); }
+  .kpi-value.green  { color: var(--accent2); }
+  .kpi-value.red    { color: var(--warn); }
+  .kpi-value.yellow { color: var(--warn2); }
+  .kpi-value.teal   { color: #00897b; }
+  .kpi-delta { font-size: 11px; margin-top: 5px; }
+  .kpi-delta.up      { color: var(--accent2); }
+  .kpi-delta.down    { color: var(--warn); }
+  .kpi-delta.neutral { color: var(--subtext); }
+
+  .chart-row { display: grid; gap: 10px; }
+  .chart-row.two   { grid-template-columns: 1fr 1fr; }
+  .chart-row.three { grid-template-columns: 2fr 1fr; }
+  .chart-panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .panel-header { display: flex; align-items: flex-start; justify-content: space-between; }
+  .panel-title { font-size: 12px; font-weight: 700; }
+  .panel-sub { font-size: 11px; color: var(--subtext); margin-top: 2px; }
+  .panel-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 700; white-space: nowrap; }
+  .panel-badge.info { background: #deeffe; color: var(--accent); }
+  .panel-badge.warn { background: #fde7d9; color: var(--warn); }
+  .panel-badge.ok   { background: #dff6dd; color: var(--accent2); }
+  .panel-badge.amber{ background: #fff4ce; color: var(--warn2); }
+
+  .data-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .data-table th { background: #f8f7f6; border-bottom: 2px solid var(--border); padding: 7px 10px; text-align: left; font-weight: 700; font-size: 11px; color: var(--subtext); text-transform: uppercase; letter-spacing: 0.04em; }
+  .data-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: #f8f7f6; }
+  .data-table tr[data-selected="true"] td { background: #deeffe; }
+
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+  .pill-fast   { background: #dff6dd; color: var(--accent2); }
+  .pill-slow   { background: #fff4ce; color: var(--warn2); }
+  .pill-dead   { background: #fde7d9; color: var(--warn); }
+  .pill-high   { background: #fde7d9; color: var(--warn); }
+  .pill-med    { background: #fff4ce; color: var(--warn2); }
+  .pill-low    { background: #dff6dd; color: var(--accent2); }
+  .pill-over   { background: #fde7d9; color: var(--warn); }
+  .pill-under  { background: #fff4ce; color: var(--warn2); }
+  .pill-ok     { background: #dff6dd; color: var(--accent2); }
+
+  .val-red    { color: var(--warn); font-weight: 700; }
+  .val-green  { color: var(--accent2); font-weight: 700; }
+  .val-amber  { color: var(--warn2); font-weight: 700; }
+
+  .mini-bar-wrap { display: flex; align-items: center; gap: 6px; }
+  .mini-bar-bg   { flex:1; height:6px; background:#edebe9; border-radius:3px; }
+  .mini-bar-fill { height:100%; border-radius:3px; }
+  .mini-bar-val  { font-size:11px; color:var(--subtext); width:42px; text-align:right; }
+
+  .insight-box { border-left: 4px solid var(--accent); padding: 10px 14px; border-radius: 0 4px 4px 0; font-size: 12px; }
+  .insight-box.blue   { background: #deeffe; color: #004c87; border-color: var(--accent); }
+  .insight-box.red    { background: #fde7d9; color: #8c1f00; border-color: var(--warn); }
+  .insight-box.amber  { background: #fff4ce; color: #7a5700; border-color: var(--warn2); }
+  .insight-box strong { display: block; margin-bottom: 3px; }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: flex; flex-direction: column; gap: 14px; }
+  .empty-state { padding: 30px; text-align: center; color: var(--subtext); font-size: 12px; }
+
+  .pbi-footer { background: var(--panel); border-top: 1px solid var(--border); padding: 6px 20px; font-size: 10px; color: var(--subtext); display: flex; justify-content: space-between; }
+
+  @media (max-width: 900px) {
+    .kpi-row { grid-template-columns: repeat(2,1fr); }
+    .chart-row.two, .chart-row.three { grid-template-columns: 1fr; }
+  }
+
+  /* ── TOOLTIP SYSTEM ── */
+  .tip {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #c8c6c4; color: #fff; font-size: 9px; font-weight: 700;
+    cursor: help; margin-left: 5px; position: relative;
+    vertical-align: middle; flex-shrink: 0; user-select: none;
+  }
+  .tip:hover { background: var(--accent); }
+  .tip::after {
+    content: attr(data-tip);
+    position: absolute; left: 50%; top: calc(100% + 7px);
+    transform: translateX(-50%);
+    background: #323130; color: #fff; font-size: 11px; font-weight: 400;
+    line-height: 1.5; padding: 9px 13px; border-radius: 4px;
+    width: 270px; z-index: 9999; box-shadow: 0 4px 14px rgba(0,0,0,0.28);
+    white-space: normal; pointer-events: none;
+    opacity: 0; visibility: hidden; transition: opacity 0.15s;
+  }
+  .tip::before {
+    content: ''; position: absolute; left: 50%; top: calc(100% + 3px);
+    transform: translateX(-50%);
+    border: 4px solid transparent; border-bottom-color: #323130;
+    z-index: 9999; pointer-events: none;
+    opacity: 0; visibility: hidden; transition: opacity 0.15s;
+  }
+  .tip:hover::after, .tip:hover::before { opacity: 1; visibility: visible; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="pbi-header">
+  <div>
+    <div class="report-title">Inventory Intelligence</div>
+    <div class="report-sub">Company XYZ · Illustrative Report · For demonstration only</div>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('performance',this)">Stock Performance</button>
+    <button class="tab-btn" onclick="switchTab('shrinkage',this)">Shrinkage & Risk</button>
+    <button class="tab-btn" onclick="switchTab('levels',this)">Stock Level Health</button>
+  </div>
+</div>
+
+<!-- FILTERS -->
+<div class="filter-bar">
+  <div class="filter-group">
+    <span class="filter-label">Year</span>
+    <div class="slicer-chips" id="filter-year">
+      <button class="chip" onclick="setFilter('year','2022',this)">2022</button>
+      <button class="chip" onclick="setFilter('year','2023',this)">2023</button>
+      <button class="chip active" onclick="setFilter('year','2024',this)">2024</button>
+    </div>
+  </div>
+  <div class="filter-divider"></div>
+  <div class="filter-group">
+    <span class="filter-label">Warehouse</span>
+    <div class="slicer-chips" id="filter-warehouse">
+      <button class="chip active" onclick="setFilter('warehouse','All',this)">All</button>
+      <button class="chip" onclick="setFilter('warehouse','WH-A',this)">WH-A</button>
+      <button class="chip" onclick="setFilter('warehouse','WH-B',this)">WH-B</button>
+      <button class="chip" onclick="setFilter('warehouse','WH-C',this)">WH-C</button>
+      <button class="chip" onclick="setFilter('warehouse','WH-D',this)">WH-D</button>
+    </div>
+  </div>
+  <div class="filter-divider"></div>
+  <div class="filter-group">
+    <span class="filter-label">Category</span>
+    <div class="slicer-chips" id="filter-category">
+      <button class="chip active" onclick="setFilter('category','All',this)">All</button>
+      <button class="chip" onclick="setFilter('category','Process Materials',this)">Process Materials</button>
+      <button class="chip" onclick="setFilter('category','Structural Components',this)">Structural</button>
+      <button class="chip" onclick="setFilter('category','Packaging Stock',this)">Packaging</button>
+      <button class="chip" onclick="setFilter('category','Service Consumables',this)">Consumables</button>
+      <button class="chip" onclick="setFilter('category','Maintenance Parts',this)">Maintenance</button>
+    </div>
+  </div>
+  <button class="reset-btn" onclick="resetFilters()">↺ Reset</button>
+</div>
+
+<!-- SELECTION BAR -->
+<div id="selection-bar">
+  <span>🔍 <strong>Cross-filter active:</strong> <span id="selection-label"></span></span>
+  <button onclick="clearSelection()">✕ Clear selection</button>
+  <span class="hint">Click the same item again to deselect</span>
+</div>
+
+<div class="canvas">
+
+  <!-- KPI ROW -->
+  <div class="kpi-row">
+    <div class="kpi-card blue" ><div class="kpi-label">Total Stock Value</div><div class="kpi-value blue"   id="kpi-total-value">–</div><div class="kpi-delta" id="kpi-total-delta"></div></div>
+    <div class="kpi-card green"><div class="kpi-label">Fast-Moving SKUs</div><div class="kpi-value green"  id="kpi-fast">–</div><div class="kpi-delta" id="kpi-fast-delta"></div></div>
+    <div class="kpi-card red"  ><div class="kpi-label">Dead Stock Value</div><div class="kpi-value red"    id="kpi-dead">–</div><div class="kpi-delta" id="kpi-dead-delta"></div></div>
+    <div class="kpi-card yellow"><div class="kpi-label">Avg Days on Hand</div><div class="kpi-value yellow" id="kpi-doh">–</div><div class="kpi-delta" id="kpi-doh-delta"></div></div>
+  </div>
+
+  <!-- TAB 1: STOCK PERFORMANCE -->
+  <div class="tab-content active" id="tab-performance">
+    <div class="chart-row two">
+      <div class="chart-panel">
+        <div class="panel-header"><div><div class="panel-title">Stock Value by Movement Class</div><div class="panel-sub">Fast · Slow · Dead — based on turnover rate</div></div><span class="panel-badge warn" id="badge-dead-pct">–</span></div>
+        <div style="height:240px"><canvas id="chart-movement-bar"></canvas></div>
+      </div>
+      <div class="chart-panel">
+        <div class="panel-header"><div><div class="panel-title">Turnover Rate by Category</div><div class="panel-sub">Times stock turns per year</div></div><span class="panel-badge info">Higher = healthier</span></div>
+        <div style="height:240px"><canvas id="chart-turnover"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-panel">
+      <div class="panel-header"><div><div class="panel-title">SKU Performance Scorecard</div><div class="panel-sub">Movement class, days on hand, turnover rate, and working capital tied up</div></div><span class="panel-badge warn" id="badge-slow-skus">–</span></div>
+      <table class="data-table">
+        <thead><tr><th>SKU</th><th>Category</th><th>Warehouse</th><th>Stock Value</th><th>Days on Hand</th><th>Turnover Rate</th><th>Working Capital</th><th>Movement</th></tr></thead>
+        <tbody id="tbody-performance"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TAB 2: SHRINKAGE & RISK -->
+  <div class="tab-content" id="tab-shrinkage">
+    <div class="insight-box red" id="insight-shrinkage"><strong>Shrinkage Summary</strong>Loading...</div>
+    <div class="chart-row two">
+      <div class="chart-panel">
+        <div class="panel-header"><div><div class="panel-title">Shrinkage % by Category</div><div class="panel-sub">Variance between expected and actual stock</div></div><span class="panel-badge warn" id="badge-shrink-cat">–</span></div>
+        <div style="height:240px"><canvas id="chart-shrinkage-cat"></canvas></div>
+      </div>
+      <div class="chart-panel">
+        <div class="panel-header"><div><div class="panel-title">Expected vs Actual Stock Units</div><div class="panel-sub">High-risk SKUs only · gap = unexplained loss</div></div><span class="panel-badge warn" id="badge-gap-val">–</span></div>
+        <div style="height:240px"><canvas id="chart-expected-actual"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-panel">
+      <div class="panel-header"><div><div class="panel-title">Shrinkage & Risk Register</div><div class="panel-sub">SKUs ranked by risk score — based on value density, access controls, variance, and movement frequency</div></div><span class="panel-badge warn" id="badge-high-risk">–</span></div>
+      <table class="data-table">
+        <thead><tr><th>SKU</th><th>Category</th><th>Warehouse</th><th>Shrinkage %</th><th>Unexplained Units</th><th>Unit Value</th><th>Exposure Value</th><th>Risk Level</th></tr></thead>
+        <tbody id="tbody-shrinkage"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TAB 3: STOCK LEVEL HEALTH -->
+  <div class="tab-content" id="tab-levels">
+    <div class="insight-box amber" id="insight-levels"><strong>Working Capital Alert</strong>Loading...</div>
+    <div class="chart-row two">
+      <div class="chart-panel">
+        <div class="panel-header"><div><div class="panel-title">Stock Status by Category</div><div class="panel-sub">Over · Under · Correctly stocked SKU count</div></div><span class="panel-badge warn" id="badge-over-count">–</span></div>
+        <div style="height:240px"><canvas id="chart-stock-status"></canvas></div>
+      </div>
+      <div class="chart-panel">
+        <div class="panel-header"><div><div class="panel-title">Working Capital Tied Up in Overstock</div><div class="panel-sub">Value of excess stock above reorder maximum</div></div><span class="panel-badge warn" id="badge-wc-over">–</span></div>
+        <div style="height:240px"><canvas id="chart-wc-overstock"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-panel">
+      <div class="panel-header"><div><div class="panel-title">Stock Level Health Register</div><div class="panel-sub">On hand vs reorder min/max · working capital impact</div></div><span class="panel-badge info" id="badge-correct-pct">–</span></div>
+      <table class="data-table">
+        <thead><tr><th>SKU</th><th>Category</th><th>Warehouse</th><th>On Hand</th><th>Reorder Min</th><th>Reorder Max</th><th>Status</th><th>Excess / Shortfall Value</th></tr></thead>
+        <tbody id="tbody-levels"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div class="pbi-footer">
+  <span>Company XYZ · Illustrative inventory data · Not for commercial use</span>
+  <span id="footer-ctx">Year: 2024 · All Warehouses · All Categories</span>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────
+// MASTER INVENTORY DATA
+// 20 fictional SKUs across 4 warehouses and 5 categories.
+// Some SKUs exist only in certain years (new lines, discontinued).
+// All names are constructed fiction — no real products.
+// ─────────────────────────────────────────────────────────
+const INVENTORY = [
+  // PROCESS MATERIALS — WH-A
+  { id:'S01', sku:'Vortex-7 Compound',    category:'Process Materials',    warehouse:'WH-A',
+    years: {
+      2022: { stockValue:320000, daysOnHand:28, turnover:12.4, onHand:1800, reorderMin:400,  reorderMax:1200, unitValue:178, shrinkagePct:0.8,  unexplainedUnits:14,  riskLevel:'Low'  },
+      2023: { stockValue:298000, daysOnHand:24, turnover:14.1, onHand:1640, reorderMin:400,  reorderMax:1200, unitValue:182, shrinkagePct:1.1,  unexplainedUnits:18,  riskLevel:'Low'  },
+      2024: { stockValue:271000, daysOnHand:21, turnover:15.8, onHand:1490, reorderMin:400,  reorderMax:1200, unitValue:182, shrinkagePct:1.4,  unexplainedUnits:21,  riskLevel:'Med'  },
+    }
+  },
+  { id:'S02', sku:'Melvex Granules',       category:'Process Materials',    warehouse:'WH-A',
+    years: {
+      2022: { stockValue:540000, daysOnHand:82, turnover:3.9,  onHand:4200, reorderMin:600,  reorderMax:2000, unitValue:129, shrinkagePct:2.1,  unexplainedUnits:88,  riskLevel:'Med'  },
+      2023: { stockValue:610000, daysOnHand:94, turnover:3.2,  onHand:4800, reorderMin:600,  reorderMax:2000, unitValue:127, shrinkagePct:2.8,  unexplainedUnits:135, riskLevel:'High' },
+      2024: { stockValue:680000, daysOnHand:112,turnover:2.6,  onHand:5400, reorderMin:600,  reorderMax:2000, unitValue:126, shrinkagePct:3.4,  unexplainedUnits:184, riskLevel:'High' },
+    }
+  },
+  { id:'S03', sku:'Truvane Powder',        category:'Process Materials',    warehouse:'WH-B',
+    years: {
+      2022: { stockValue:180000, daysOnHand:31, turnover:11.2, onHand:2100, reorderMin:500,  reorderMax:1800, unitValue:86,  shrinkagePct:1.0,  unexplainedUnits:21,  riskLevel:'Low'  },
+      2023: { stockValue:192000, daysOnHand:29, turnover:12.0, onHand:2200, reorderMin:500,  reorderMax:1800, unitValue:87,  shrinkagePct:1.2,  unexplainedUnits:26,  riskLevel:'Low'  },
+      2024: { stockValue:204000, daysOnHand:26, turnover:13.1, onHand:2350, reorderMin:500,  reorderMax:1800, unitValue:87,  shrinkagePct:1.1,  unexplainedUnits:26,  riskLevel:'Low'  },
+    }
+  },
+  // STRUCTURAL COMPONENTS — WH-A, WH-B
+  { id:'S04', sku:'Braxite Panels',        category:'Structural Components',warehouse:'WH-A',
+    years: {
+      2022: { stockValue:890000, daysOnHand:44, turnover:7.1,  onHand:3100, reorderMin:400,  reorderMax:1400, unitValue:287, shrinkagePct:0.4,  unexplainedUnits:12,  riskLevel:'Low'  },
+      2023: { stockValue:940000, daysOnHand:51, turnover:6.2,  onHand:3300, reorderMin:400,  reorderMax:1400, unitValue:285, shrinkagePct:0.6,  unexplainedUnits:20,  riskLevel:'Low'  },
+      2024: { stockValue:1020000,daysOnHand:63, turnover:5.1,  onHand:3600, reorderMin:400,  reorderMax:1400, unitValue:283, shrinkagePct:0.7,  unexplainedUnits:25,  riskLevel:'Low'  },
+    }
+  },
+  { id:'S05', sku:'Zorlon Sheets',         category:'Structural Components',warehouse:'WH-B',
+    years: {
+      2022: { stockValue:420000, daysOnHand:38, turnover:8.4,  onHand:1400, reorderMin:300,  reorderMax:1000, unitValue:300, shrinkagePct:0.3,  unexplainedUnits:4,   riskLevel:'Low'  },
+      2023: { stockValue:450000, daysOnHand:42, turnover:7.8,  onHand:1500, reorderMin:300,  reorderMax:1000, unitValue:300, shrinkagePct:0.5,  unexplainedUnits:8,   riskLevel:'Low'  },
+      2024: { stockValue:490000, daysOnHand:49, turnover:6.9,  onHand:1640, reorderMin:300,  reorderMax:1000, unitValue:299, shrinkagePct:0.6,  unexplainedUnits:10,  riskLevel:'Low'  },
+    }
+  },
+  { id:'S06', sku:'Nordex Blocks',         category:'Structural Components',warehouse:'WH-C',
+    // New line — introduced 2023
+    years: {
+      2023: { stockValue:310000, daysOnHand:35, turnover:9.4,  onHand:980,  reorderMin:200,  reorderMax:800,  unitValue:316, shrinkagePct:0.2,  unexplainedUnits:2,   riskLevel:'Low'  },
+      2024: { stockValue:360000, daysOnHand:33, turnover:9.9,  onHand:1100, reorderMin:200,  reorderMax:800,  unitValue:327, shrinkagePct:0.3,  unexplainedUnits:3,   riskLevel:'Low'  },
+    }
+  },
+  // PACKAGING STOCK — WH-B, WH-C
+  { id:'S07', sku:'Carbitex Rolls',        category:'Packaging Stock',      warehouse:'WH-B',
+    years: {
+      2022: { stockValue:95000,  daysOnHand:19, turnover:18.2, onHand:6200, reorderMin:1000, reorderMax:4000, unitValue:15,  shrinkagePct:3.8,  unexplainedUnits:235, riskLevel:'High' },
+      2023: { stockValue:98000,  daysOnHand:17, turnover:20.1, onHand:6500, reorderMin:1000, reorderMax:4000, unitValue:15,  shrinkagePct:4.2,  unexplainedUnits:273, riskLevel:'High' },
+      2024: { stockValue:102000, daysOnHand:16, turnover:21.4, onHand:6800, reorderMin:1000, reorderMax:4000, unitValue:15,  shrinkagePct:4.6,  unexplainedUnits:313, riskLevel:'High' },
+    }
+  },
+  { id:'S08', sku:'Creltix Bags',          category:'Packaging Stock',      warehouse:'WH-C',
+    years: {
+      2022: { stockValue:62000,  daysOnHand:22, turnover:15.4, onHand:8100, reorderMin:1500, reorderMax:5000, unitValue:8,   shrinkagePct:4.9,  unexplainedUnits:397, riskLevel:'High' },
+      2023: { stockValue:67000,  daysOnHand:21, turnover:16.2, onHand:8800, reorderMin:1500, reorderMax:5000, unitValue:8,   shrinkagePct:5.3,  unexplainedUnits:466, riskLevel:'High' },
+      2024: { stockValue:71000,  daysOnHand:20, turnover:17.1, onHand:9200, reorderMin:1500, reorderMax:5000, unitValue:8,   shrinkagePct:5.8,  unexplainedUnits:534, riskLevel:'High' },
+    }
+  },
+  { id:'S09', sku:'Pluvon Strips',         category:'Packaging Stock',      warehouse:'WH-B',
+    // Discontinued after 2022
+    years: {
+      2022: { stockValue:44000,  daysOnHand:148,turnover:1.8,  onHand:3800, reorderMin:500,  reorderMax:1500, unitValue:12,  shrinkagePct:2.1,  unexplainedUnits:80,  riskLevel:'Med'  },
+    }
+  },
+  // SERVICE CONSUMABLES — WH-C, WH-D
+  { id:'S10', sku:'Heldrix Capsules',      category:'Service Consumables',  warehouse:'WH-C',
+    years: {
+      2022: { stockValue:148000, daysOnHand:58, turnover:5.8,  onHand:4100, reorderMin:800,  reorderMax:2500, unitValue:36,  shrinkagePct:5.8,  unexplainedUnits:238, riskLevel:'High' },
+      2023: { stockValue:162000, daysOnHand:71, turnover:4.7,  onHand:4600, reorderMin:800,  reorderMax:2500, unitValue:35,  shrinkagePct:6.4,  unexplainedUnits:295, riskLevel:'High' },
+      2024: { stockValue:174000, daysOnHand:88, turnover:3.8,  onHand:5100, reorderMin:800,  reorderMax:2500, unitValue:34,  shrinkagePct:7.1,  unexplainedUnits:362, riskLevel:'High' },
+    }
+  },
+  { id:'S11', sku:'Zephral Pellets',       category:'Service Consumables',  warehouse:'WH-D',
+    years: {
+      2022: { stockValue:88000,  daysOnHand:34, turnover:10.1, onHand:3200, reorderMin:600,  reorderMax:2200, unitValue:28,  shrinkagePct:3.1,  unexplainedUnits:99,  riskLevel:'Med'  },
+      2023: { stockValue:94000,  daysOnHand:38, turnover:9.1,  onHand:3500, reorderMin:600,  reorderMax:2200, unitValue:27,  shrinkagePct:3.6,  unexplainedUnits:126, riskLevel:'Med'  },
+      2024: { stockValue:99000,  daysOnHand:44, turnover:7.9,  onHand:3800, reorderMin:600,  reorderMax:2200, unitValue:26,  shrinkagePct:4.2,  unexplainedUnits:160, riskLevel:'High' },
+    }
+  },
+  { id:'S12', sku:'Quarvon Paste',         category:'Service Consumables',  warehouse:'WH-D',
+    // New line — introduced 2024
+    years: {
+      2024: { stockValue:76000,  daysOnHand:29, turnover:11.8, onHand:2200, reorderMin:400,  reorderMax:1600, unitValue:35,  shrinkagePct:2.2,  unexplainedUnits:48,  riskLevel:'Med'  },
+    }
+  },
+  // MAINTENANCE PARTS — WH-A, WH-D
+  { id:'S13', sku:'Valmox Tubes',          category:'Maintenance Parts',    warehouse:'WH-A',
+    years: {
+      2022: { stockValue:210000, daysOnHand:121,turnover:2.2,  onHand:1400, reorderMin:150,  reorderMax:500,  unitValue:150, shrinkagePct:1.8,  unexplainedUnits:25,  riskLevel:'Med'  },
+      2023: { stockValue:228000, daysOnHand:134,turnover:1.9,  onHand:1520, reorderMin:150,  reorderMax:500,  unitValue:150, shrinkagePct:2.2,  unexplainedUnits:33,  riskLevel:'Med'  },
+      2024: { stockValue:245000, daysOnHand:152,turnover:1.6,  onHand:1640, reorderMin:150,  reorderMax:500,  unitValue:149, shrinkagePct:2.6,  unexplainedUnits:43,  riskLevel:'High' },
+    }
+  },
+  { id:'S14', sku:'Belgrix Coils',         category:'Maintenance Parts',    warehouse:'WH-D',
+    years: {
+      2022: { stockValue:178000, daysOnHand:108,turnover:2.8,  onHand:890,  reorderMin:100,  reorderMax:400,  unitValue:200, shrinkagePct:1.4,  unexplainedUnits:12,  riskLevel:'Med'  },
+      2023: { stockValue:192000, daysOnHand:118,turnover:2.4,  onHand:960,  reorderMin:100,  reorderMax:400,  unitValue:200, shrinkagePct:1.9,  unexplainedUnits:18,  riskLevel:'Med'  },
+      2024: { stockValue:204000, daysOnHand:131,turnover:2.1,  onHand:1020, reorderMin:100,  reorderMax:400,  unitValue:200, shrinkagePct:2.3,  unexplainedUnits:23,  riskLevel:'Med'  },
+    }
+  },
+  { id:'S15', sku:'Sornax Plates',         category:'Maintenance Parts',    warehouse:'WH-A',
+    years: {
+      2022: { stockValue:390000, daysOnHand:178,turnover:1.4,  onHand:1300, reorderMin:100,  reorderMax:350,  unitValue:300, shrinkagePct:0.6,  unexplainedUnits:8,   riskLevel:'Low'  },
+      2023: { stockValue:415000, daysOnHand:191,turnover:1.2,  onHand:1400, reorderMin:100,  reorderMax:350,  unitValue:296, shrinkagePct:0.8,  unexplainedUnits:11,  riskLevel:'Low'  },
+      2024: { stockValue:438000, daysOnHand:208,turnover:1.0,  onHand:1490, reorderMin:100,  reorderMax:350,  unitValue:294, shrinkagePct:0.9,  unexplainedUnits:13,  riskLevel:'Low'  },
+    }
+  },
+  { id:'S16', sku:'Telvex Rods',           category:'Maintenance Parts',    warehouse:'WH-D',
+    years: {
+      2022: { stockValue:124000, daysOnHand:44, turnover:7.4,  onHand:620,  reorderMin:100,  reorderMax:450,  unitValue:200, shrinkagePct:1.1,  unexplainedUnits:7,   riskLevel:'Low'  },
+      2023: { stockValue:131000, daysOnHand:41, turnover:8.0,  onHand:660,  reorderMin:100,  reorderMax:450,  unitValue:199, shrinkagePct:1.3,  unexplainedUnits:9,   riskLevel:'Low'  },
+      2024: { stockValue:138000, daysOnHand:39, turnover:8.7,  onHand:700,  reorderMin:100,  reorderMax:450,  unitValue:197, shrinkagePct:1.4,  unexplainedUnits:10,  riskLevel:'Low'  },
+    }
+  },
+  // ADDITIONAL CROSS-CATEGORY
+  { id:'S17', sku:'Frendix Units',         category:'Service Consumables',  warehouse:'WH-A',
+    years: {
+      2022: { stockValue:52000,  daysOnHand:18, turnover:19.4, onHand:1800, reorderMin:400,  reorderMax:1400, unitValue:29,  shrinkagePct:6.2,  unexplainedUnits:112, riskLevel:'High' },
+      2023: { stockValue:56000,  daysOnHand:16, turnover:21.8, onHand:1950, reorderMin:400,  reorderMax:1400, unitValue:29,  shrinkagePct:6.8,  unexplainedUnits:133, riskLevel:'High' },
+      2024: { stockValue:60000,  daysOnHand:14, turnover:24.2, onHand:2100, reorderMin:400,  reorderMax:1400, unitValue:29,  shrinkagePct:7.4,  unexplainedUnits:155, riskLevel:'High' },
+    }
+  },
+  { id:'S18', sku:'Wolvex Cartridges',     category:'Service Consumables',  warehouse:'WH-C',
+    years: {
+      2022: { stockValue:84000,  daysOnHand:26, turnover:13.2, onHand:2800, reorderMin:500,  reorderMax:1800, unitValue:30,  shrinkagePct:5.4,  unexplainedUnits:151, riskLevel:'High' },
+      2023: { stockValue:89000,  daysOnHand:24, turnover:14.4, onHand:3000, reorderMin:500,  reorderMax:1800, unitValue:30,  shrinkagePct:5.9,  unexplainedUnits:177, riskLevel:'High' },
+      2024: { stockValue:94000,  daysOnHand:22, turnover:15.9, onHand:3200, reorderMin:500,  reorderMax:1800, unitValue:29,  shrinkagePct:6.3,  unexplainedUnits:202, riskLevel:'High' },
+    }
+  },
+  { id:'S19', sku:'Axivon Drums',          category:'Process Materials',    warehouse:'WH-D',
+    years: {
+      2022: { stockValue:460000, daysOnHand:66, turnover:4.9,  onHand:1100, reorderMin:150,  reorderMax:600,  unitValue:418, shrinkagePct:1.6,  unexplainedUnits:18,  riskLevel:'Med'  },
+      2023: { stockValue:490000, daysOnHand:74, turnover:4.3,  onHand:1200, reorderMin:150,  reorderMax:600,  unitValue:408, shrinkagePct:1.9,  unexplainedUnits:23,  riskLevel:'Med'  },
+      2024: { stockValue:518000, daysOnHand:83, turnover:3.8,  onHand:1280, reorderMin:150,  reorderMax:600,  unitValue:405, shrinkagePct:2.2,  unexplainedUnits:28,  riskLevel:'Med'  },
+    }
+  },
+  { id:'S20', sku:'Drovane Filters',       category:'Maintenance Parts',    warehouse:'WH-C',
+    // New line — introduced 2023
+    years: {
+      2023: { stockValue:142000, daysOnHand:52, turnover:6.4,  onHand:710,  reorderMin:100,  reorderMax:400,  unitValue:200, shrinkagePct:0.7,  unexplainedUnits:5,   riskLevel:'Low'  },
+      2024: { stockValue:158000, daysOnHand:48, turnover:7.1,  onHand:790,  reorderMin:100,  reorderMax:400,  unitValue:200, shrinkagePct:0.9,  unexplainedUnits:7,   riskLevel:'Low'  },
+    }
+  },
+];
+
+// ── HELPERS ───────────────────────────────────────────────
+function movementClass(doh, turnover) {
+  if (turnover >= 10 && doh <= 35)  return 'Fast';
+  if (turnover <= 3  || doh >= 100) return 'Dead';
+  return 'Slow';
+}
+function stockStatus(onHand, min, max) {
+  if (onHand > max)  return 'Over';
+  if (onHand < min)  return 'Under';
+  return 'Correct';
+}
+function fmtV(n) { return n >= 1000000 ? 'R '+(n/1000000).toFixed(2)+'M' : 'R '+(n/1000).toFixed(0)+'K'; }
+
+// ── STATE ─────────────────────────────────────────────────
+let state = { year:'2024', warehouse:'All', category:'All' };
+let selection = { type:null, value:null };
+
+function getData() {
+  const yr = parseInt(state.year);
+  return INVENTORY
+    .filter(s => s.years[yr])
+    .filter(s => state.warehouse === 'All' || s.warehouse === state.warehouse)
+    .filter(s => state.category  === 'All' || s.category  === state.category)
+    .filter(s => {
+      if (!selection.type) return true;
+      if (selection.type === 'sku')      return s.id === selection.value;
+      if (selection.type === 'category') return s.category === selection.value;
+      if (selection.type === 'movement') return movementClass(s.years[yr].daysOnHand, s.years[yr].turnover) === selection.value;
+      return true;
+    })
+    .map(s => ({ ...s, ...s.years[yr], movement: movementClass(s.years[yr].daysOnHand, s.years[yr].turnover), status: stockStatus(s.years[yr].onHand, s.years[yr].reorderMin, s.years[yr].reorderMax) }));
+}
+
+function getBaseData() {
+  const yr = parseInt(state.year);
+  return INVENTORY
+    .filter(s => s.years[yr])
+    .filter(s => state.warehouse === 'All' || s.warehouse === state.warehouse)
+    .filter(s => state.category  === 'All' || s.category  === state.category)
+    .map(s => ({ ...s, ...s.years[yr], movement: movementClass(s.years[yr].daysOnHand, s.years[yr].turnover), status: stockStatus(s.years[yr].onHand, s.years[yr].reorderMin, s.years[yr].reorderMax) }));
+}
+
+// ── FILTER & SELECTION ────────────────────────────────────
+function setFilter(type, value, btn) {
+  state[type] = value;
+  document.querySelectorAll(`#filter-${type} .chip`).forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  renderAll();
+}
+function setSelection(type, value, label) {
+  if (selection.type === type && selection.value === value) { clearSelection(); return; }
+  selection = { type, value };
+  const bar = document.getElementById('selection-bar');
+  bar.style.display = 'flex';
+  document.getElementById('selection-label').textContent = label;
+  renderAll();
+}
+function clearSelection() {
+  selection = { type:null, value:null };
+  document.getElementById('selection-bar').style.display = 'none';
+  renderAll();
+}
+function resetFilters() {
+  state = { year:'2024', warehouse:'All', category:'All' };
+  clearSelection();
+  ['year','warehouse','category'].forEach(t => document.querySelectorAll(`#filter-${t} .chip`).forEach(c => c.classList.remove('active')));
+  document.querySelector('#filter-year .chip:nth-child(3)').classList.add('active');
+  document.querySelector('#filter-warehouse .chip:first-child').classList.add('active');
+  document.querySelector('#filter-category .chip:first-child').classList.add('active');
+  renderAll();
+}
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ── CHARTS ────────────────────────────────────────────────
+const charts = {};
+function kill(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+// ── RENDER ALL ────────────────────────────────────────────
+function renderAll() {
+  const data = getData();
+  document.getElementById('footer-ctx').textContent = `Year: ${state.year} · Warehouse: ${state.warehouse} · Category: ${state.category}`;
+  updateKPIs(data);
+  renderMovementBar(data);
+  renderTurnover(data);
+  renderPerformanceTable(data);
+  renderShrinkageCat(data);
+  renderExpectedActual(data);
+  renderShrinkageTable(data);
+  renderStockStatus(data);
+  renderWCOverstock(data);
+  renderLevelsTable(data);
+  updateInsights(data);
+}
+
+function updateKPIs(data) {
+  if (!data.length) {
+    ['kpi-total-value','kpi-fast','kpi-dead','kpi-doh'].forEach(id => document.getElementById(id).textContent='–');
+    return;
+  }
+  const totalVal  = data.reduce((s,c) => s+c.stockValue, 0);
+  const fastCount = data.filter(c => c.movement==='Fast').length;
+  const deadVal   = data.filter(c => c.movement==='Dead').reduce((s,c) => s+c.stockValue, 0);
+  const avgDoh    = Math.round(data.reduce((s,c) => s+c.daysOnHand, 0) / data.length);
+
+  document.getElementById('kpi-total-value').textContent = fmtV(totalVal);
+  document.getElementById('kpi-fast').textContent = `${fastCount} / ${data.length}`;
+  document.getElementById('kpi-dead').textContent = fmtV(deadVal);
+  document.getElementById('kpi-doh').textContent = avgDoh + ' days';
+
+  const yr = parseInt(state.year);
+  if (yr > 2022) {
+    const prev = INVENTORY.filter(s => s.years[yr-1])
+      .filter(s => state.warehouse==='All'||s.warehouse===state.warehouse)
+      .filter(s => state.category==='All'||s.category===state.category)
+      .map(s => ({...s,...s.years[yr-1]}));
+    if (prev.length) {
+      const prevVal  = prev.reduce((s,c) => s+c.stockValue, 0);
+      const prevDead = prev.filter(c => movementClass(c.daysOnHand,c.turnover)==='Dead').reduce((s,c) => s+c.stockValue,0);
+      const prevDoh  = Math.round(prev.reduce((s,c) => s+c.daysOnHand,0)/prev.length);
+      setDelta('kpi-total-delta', totalVal, prevVal, true, 'vs prior year', true);
+      setDelta('kpi-dead-delta',  deadVal,  prevDead, true, 'vs prior year', false);
+      setDeltaText('kpi-fast-delta',  `${fastCount} of ${data.length} SKUs moving fast`);
+      setDeltaText('kpi-doh-delta',   avgDoh > prevDoh ? `▲ ${avgDoh-prevDoh} days vs prior year` : `▼ ${prevDoh-avgDoh} days vs prior year`, avgDoh <= prevDoh);
+    }
+  } else {
+    ['kpi-total-delta','kpi-fast-delta','kpi-dead-delta','kpi-doh-delta'].forEach(id => setDeltaText(id,'Base year'));
+  }
+}
+function setDelta(id, val, prev, isVal, suffix, upGood) {
+  const el = document.getElementById(id);
+  const pct = ((val-prev)/prev*100).toFixed(1);
+  const up = val >= prev;
+  el.textContent = (up?'▲ ':'▼ ') + Math.abs(pct) + '% ' + suffix;
+  el.className = 'kpi-delta ' + ((up===upGood)?'up':'down');
+}
+function setDeltaText(id, text, isGood) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = 'kpi-delta ' + (isGood===undefined?'neutral':isGood?'up':'down');
+}
+
+// ── TAB 1: MOVEMENT BAR ───────────────────────────────────
+function renderMovementBar(data) {
+  kill('movement-bar');
+  const base = getBaseData();
+  const cats = [...new Set(base.map(s => s.category))];
+  const fastV = cats.map(c => base.filter(s=>s.category===c&&s.movement==='Fast').reduce((a,s)=>a+s.stockValue,0));
+  const slowV = cats.map(c => base.filter(s=>s.category===c&&s.movement==='Slow').reduce((a,s)=>a+s.stockValue,0));
+  const deadV = cats.map(c => base.filter(s=>s.category===c&&s.movement==='Dead').reduce((a,s)=>a+s.stockValue,0));
+
+  const totalVal = base.reduce((a,s)=>a+s.stockValue,0);
+  const deadTotal= base.filter(s=>s.movement==='Dead').reduce((a,s)=>a+s.stockValue,0);
+  document.getElementById('badge-dead-pct').textContent = `Dead stock = ${(deadTotal/totalVal*100).toFixed(0)}% of total value`;
+
+  const selCat = selection.type==='category' ? selection.value : null;
+  const alpha = (cat, base) => selCat && selCat!==cat ? base+'33' : base;
+
+  const ctx = document.getElementById('chart-movement-bar').getContext('2d');
+  charts['movement-bar'] = new Chart(ctx, {
+    type:'bar',
+    data:{ labels:cats, datasets:[
+      { label:'Fast', data:fastV, backgroundColor: cats.map(c=>alpha(c,'#107c10')), borderRadius:2 },
+      { label:'Slow', data:slowV, backgroundColor: cats.map(c=>alpha(c,'#f1a300')), borderRadius:2 },
+      { label:'Dead', data:deadV, backgroundColor: cats.map(c=>alpha(c,'#d83b01')), borderRadius:2 },
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      onClick(evt) {
+        const pts = charts['movement-bar'].getElementsAtEventForMode(evt,'index',{intersect:false},true);
+        if (pts.length) setSelection('category', cats[pts[0].index], `Category: ${cats[pts[0].index]}`);
+      },
+      plugins:{ legend:{ position:'top', labels:{ font:{size:11}, boxWidth:12 } } },
+      scales:{ x:{stacked:true,ticks:{font:{size:10}},grid:{display:false}}, y:{stacked:true,ticks:{font:{size:10},callback:v=>'R'+(v/1000).toFixed(0)+'K'},grid:{color:'#f0eeec'}} }
+    }
+  });
+}
+
+function renderTurnover(data) {
+  kill('turnover');
+  const base = getBaseData();
+  const cats = [...new Set(base.map(s => s.category))];
+  const avgTurnover = cats.map(c => {
+    const items = base.filter(s=>s.category===c);
+    return items.length ? +(items.reduce((a,s)=>a+s.turnover,0)/items.length).toFixed(1) : 0;
+  });
+  const selCat = selection.type==='category' ? selection.value : null;
+  const ctx = document.getElementById('chart-turnover').getContext('2d');
+  charts['turnover'] = new Chart(ctx, {
+    type:'bar',
+    data:{ labels:cats, datasets:[{
+      label:'Avg Turnover (times/yr)',
+      data:avgTurnover,
+      backgroundColor: cats.map((c,i) => selCat&&selCat!==c ? 'rgba(0,120,212,0.2)' : avgTurnover[i]>=8?'#107c10':avgTurnover[i]>=4?'#f1a300':'#d83b01'),
+      borderRadius:3
+    }]},
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      onClick(evt) {
+        const pts = charts['turnover'].getElementsAtEventForMode(evt,'nearest',{intersect:true},true);
+        if (pts.length) setSelection('category', cats[pts[0].index], `Category: ${cats[pts[0].index]}`);
+      },
+      plugins:{ legend:{display:false} },
+      scales:{ x:{ticks:{font:{size:10}},grid:{color:'#f0eeec'}}, y:{ticks:{font:{size:10}},grid:{display:false}} }
+    }
+  });
+}
+
+function renderPerformanceTable(data) {
+  const sorted = [...data].sort((a,b)=>b.stockValue-a.stockValue);
+  const slow = sorted.filter(s=>s.movement!=='Fast').length;
+  document.getElementById('badge-slow-skus').textContent = `${slow} SKU${slow!==1?'s':''} slow or dead`;
+  const tbody = document.getElementById('tbody-performance');
+  if (!sorted.length) { tbody.innerHTML='<tr><td colspan="8" class="empty-state">No SKUs match this selection.</td></tr>'; return; }
+  const totalVal = sorted.reduce((a,s)=>a+s.stockValue,0);
+  tbody.innerHTML = sorted.map(s => {
+    const share = (s.stockValue/totalVal*100).toFixed(1);
+    const bw = Math.min(100, parseFloat(share)*4);
+    const mc = s.movement==='Fast'?'pill-fast':s.movement==='Slow'?'pill-slow':'pill-dead';
+    const sel = selection.type==='sku' && selection.value===s.id;
+    return `<tr onclick="setSelection('sku','${s.id}','SKU: ${s.sku}')" style="cursor:pointer" data-selected="${sel}">
+      <td><strong>${s.sku}</strong></td><td>${s.category}</td><td>${s.warehouse}</td>
+      <td>${fmtV(s.stockValue)}</td>
+      <td class="${s.daysOnHand>90?'val-red':s.daysOnHand>45?'val-amber':''}">${s.daysOnHand} days</td>
+      <td class="${s.turnover>=10?'val-green':s.turnover<=3?'val-red':'val-amber'}">${s.turnover.toFixed(1)}x</td>
+      <td><div class="mini-bar-wrap"><div class="mini-bar-bg"><div class="mini-bar-fill" style="width:${bw}%;background:${s.movement==='Dead'?'#d83b01':s.movement==='Slow'?'#f1a300':'#107c10'}"></div></div><span class="mini-bar-val">${share}%</span></div></td>
+      <td><span class="pill ${mc}">${s.movement}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── TAB 2: SHRINKAGE ──────────────────────────────────────
+function renderShrinkageCat(data) {
+  kill('shrinkage-cat');
+  const base = getBaseData();
+  const cats = [...new Set(base.map(s=>s.category))];
+  const avgShrink = cats.map(c => {
+    const items = base.filter(s=>s.category===c);
+    return items.length ? +(items.reduce((a,s)=>a+s.shrinkagePct,0)/items.length).toFixed(2) : 0;
+  });
+  const worst = cats[avgShrink.indexOf(Math.max(...avgShrink))];
+  document.getElementById('badge-shrink-cat').textContent = `Highest: ${worst}`;
+  const selCat = selection.type==='category' ? selection.value : null;
+  const ctx = document.getElementById('chart-shrinkage-cat').getContext('2d');
+  charts['shrinkage-cat'] = new Chart(ctx, {
+    type:'bar',
+    data:{ labels:cats, datasets:[{
+      label:'Avg Shrinkage %',
+      data:avgShrink,
+      backgroundColor: cats.map((c,i) => selCat&&selCat!==c?'rgba(216,59,1,0.2)':avgShrink[i]>=5?'#d83b01':avgShrink[i]>=3?'#f1a300':'#107c10'),
+      borderRadius:3
+    }]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      onClick(evt) {
+        const pts = charts['shrinkage-cat'].getElementsAtEventForMode(evt,'index',{intersect:false},true);
+        if (pts.length) setSelection('category', cats[pts[0].index], `Category: ${cats[pts[0].index]}`);
+      },
+      plugins:{ legend:{display:false} },
+      scales:{ x:{ticks:{font:{size:10}},grid:{display:false}}, y:{ticks:{font:{size:10},callback:v=>v+'%'},grid:{color:'#f0eeec'}} }
+    }
+  });
+}
+
+function renderExpectedActual(data) {
+  kill('expected-actual');
+  const highRisk = [...data].filter(s=>s.riskLevel==='High').sort((a,b)=>b.unexplainedUnits-a.unexplainedUnits).slice(0,8);
+  const gapVal = highRisk.reduce((a,s)=>a+s.unexplainedUnits*s.unitValue,0);
+  document.getElementById('badge-gap-val').textContent = `Gap exposure: ${fmtV(gapVal)}`;
+  if (!highRisk.length) { kill('expected-actual'); return; }
+  const ctx = document.getElementById('chart-expected-actual').getContext('2d');
+  const expected = highRisk.map(s=>s.onHand + s.unexplainedUnits);
+  const actual   = highRisk.map(s=>s.onHand);
+  charts['expected-actual'] = new Chart(ctx, {
+    type:'bar',
+    data:{ labels: highRisk.map(s=>s.sku), datasets:[
+      { label:'Expected', data:expected, backgroundColor:'rgba(0,120,212,0.6)', borderRadius:2 },
+      { label:'Actual',   data:actual,   backgroundColor:'rgba(216,59,1,0.7)',  borderRadius:2 },
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      onClick(evt) {
+        const pts = charts['expected-actual'].getElementsAtEventForMode(evt,'index',{intersect:false},true);
+        if (pts.length) setSelection('sku', highRisk[pts[0].index].id, `SKU: ${highRisk[pts[0].index].sku}`);
+      },
+      plugins:{ legend:{ position:'top', labels:{ font:{size:11}, boxWidth:12 } } },
+      scales:{ x:{ticks:{font:{size:10},maxRotation:35},grid:{display:false}}, y:{ticks:{font:{size:10}},grid:{color:'#f0eeec'}} }
+    }
+  });
+}
+
+function renderShrinkageTable(data) {
+  const sorted = [...data].sort((a,b)=>b.shrinkagePct-a.shrinkagePct);
+  const highCount = sorted.filter(s=>s.riskLevel==='High').length;
+  document.getElementById('badge-high-risk').textContent = `${highCount} HIGH risk SKU${highCount!==1?'s':''}`;
+  const tbody = document.getElementById('tbody-shrinkage');
+  if (!sorted.length) { tbody.innerHTML='<tr><td colspan="8" class="empty-state">No SKUs match this selection.</td></tr>'; return; }
+  tbody.innerHTML = sorted.map(s => {
+    const rc = s.riskLevel==='High'?'pill-high':s.riskLevel==='Med'?'pill-med':'pill-low';
+    const sc = s.shrinkagePct>=5?'val-red':s.shrinkagePct>=3?'val-amber':'';
+    const sel = selection.type==='sku' && selection.value===s.id;
+    const expVal = fmtV(s.unexplainedUnits * s.unitValue);
+    return `<tr onclick="setSelection('sku','${s.id}','SKU: ${s.sku}')" style="cursor:pointer" data-selected="${sel}">
+      <td><strong>${s.sku}</strong></td><td>${s.category}</td><td>${s.warehouse}</td>
+      <td class="${sc}">${s.shrinkagePct.toFixed(1)}%</td>
+      <td class="${s.unexplainedUnits>100?'val-red':s.unexplainedUnits>30?'val-amber':''}">${s.unexplainedUnits.toLocaleString()}</td>
+      <td>R ${s.unitValue.toFixed(0)}</td>
+      <td class="${s.unexplainedUnits*s.unitValue>50000?'val-red':''}">${expVal}</td>
+      <td><span class="pill ${rc}">${s.riskLevel}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── TAB 3: STOCK LEVELS ───────────────────────────────────
+function renderStockStatus(data) {
+  kill('stock-status');
+  const base = getBaseData();
+  const cats = [...new Set(base.map(s=>s.category))];
+  const overC  = cats.map(c=>base.filter(s=>s.category===c&&s.status==='Over').length);
+  const underC = cats.map(c=>base.filter(s=>s.category===c&&s.status==='Under').length);
+  const okC    = cats.map(c=>base.filter(s=>s.category===c&&s.status==='Correct').length);
+  const totalOver = base.filter(s=>s.status==='Over').length;
+  document.getElementById('badge-over-count').textContent = `${totalOver} SKU${totalOver!==1?'s':''} overstocked`;
+  const selCat = selection.type==='category' ? selection.value : null;
+  const ctx = document.getElementById('chart-stock-status').getContext('2d');
+  charts['stock-status'] = new Chart(ctx, {
+    type:'bar',
+    data:{ labels:cats, datasets:[
+      { label:'Over',    data:overC,  backgroundColor: cats.map(c=>selCat&&selCat!==c?'rgba(216,59,1,0.2)':'#d83b01'), borderRadius:2 },
+      { label:'Under',   data:underC, backgroundColor: cats.map(c=>selCat&&selCat!==c?'rgba(241,163,0,0.2)':'#f1a300'), borderRadius:2 },
+      { label:'Correct', data:okC,    backgroundColor: cats.map(c=>selCat&&selCat!==c?'rgba(16,124,16,0.2)':'#107c10'), borderRadius:2 },
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false,
+      onClick(evt) {
+        const pts = charts['stock-status'].getElementsAtEventForMode(evt,'index',{intersect:false},true);
+        if (pts.length) setSelection('category', cats[pts[0].index], `Category: ${cats[pts[0].index]}`);
+      },
+      plugins:{ legend:{ position:'top', labels:{ font:{size:11}, boxWidth:12 } } },
+      scales:{ x:{stacked:true,ticks:{font:{size:10}},grid:{display:false}}, y:{stacked:true,ticks:{font:{size:10}},grid:{color:'#f0eeec'}} }
+    }
+  });
+}
+
+function renderWCOverstock(data) {
+  kill('wc-overstock');
+  const over = [...data].filter(s=>s.status==='Over').sort((a,b)=>{
+    const aEx = Math.max(0,a.onHand-a.reorderMax)*a.unitValue;
+    const bEx = Math.max(0,b.onHand-b.reorderMax)*b.unitValue;
+    return bEx-aEx;
+  }).slice(0,8);
+  const wcTotal = over.reduce((a,s)=>a+Math.max(0,s.onHand-s.reorderMax)*s.unitValue,0);
+  document.getElementById('badge-wc-over').textContent = `Total tied up: ${fmtV(wcTotal)}`;
+  if (!over.length) return;
+  const ctx = document.getElementById('chart-wc-overstock').getContext('2d');
+  charts['wc-overstock'] = new Chart(ctx, {
+    type:'bar',
+    data:{ labels:over.map(s=>s.sku), datasets:[{
+      label:'Excess stock value',
+      data:over.map(s=>Math.max(0,s.onHand-s.reorderMax)*s.unitValue),
+      backgroundColor:'rgba(216,59,1,0.75)', borderRadius:3
+    }]},
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      onClick(evt) {
+        const pts = charts['wc-overstock'].getElementsAtEventForMode(evt,'nearest',{intersect:true},true);
+        if (pts.length) setSelection('sku', over[pts[0].index].id, `SKU: ${over[pts[0].index].sku}`);
+      },
+      plugins:{ legend:{display:false} },
+      scales:{ x:{ticks:{font:{size:10},callback:v=>'R'+(v/1000).toFixed(0)+'K'},grid:{color:'#f0eeec'}}, y:{ticks:{font:{size:10}},grid:{display:false}} }
+    }
+  });
+}
+
+function renderLevelsTable(data) {
+  const sorted = [...data].sort((a,b)=>{
+    const o={Over:0,Under:1,Correct:2};
+    return o[a.status]-o[b.status];
+  });
+  const correct = sorted.filter(s=>s.status==='Correct').length;
+  const pct = sorted.length ? Math.round(correct/sorted.length*100) : 0;
+  document.getElementById('badge-correct-pct').textContent = `${pct}% correctly stocked`;
+  const tbody = document.getElementById('tbody-levels');
+  if (!sorted.length) { tbody.innerHTML='<tr><td colspan="8" class="empty-state">No SKUs match this selection.</td></tr>'; return; }
+  tbody.innerHTML = sorted.map(s => {
+    const sc = s.status==='Over'?'pill-over':s.status==='Under'?'pill-under':'pill-ok';
+    const excess = s.status==='Over'  ? Math.max(0,s.onHand-s.reorderMax)*s.unitValue : 0;
+    const short  = s.status==='Under' ? Math.max(0,s.reorderMin-s.onHand)*s.unitValue  : 0;
+    const impactVal = excess > 0 ? `<span class="val-red">+${fmtV(excess)} excess</span>` : short > 0 ? `<span class="val-amber">-${fmtV(short)} shortfall</span>` : `<span class="val-green">─</span>`;
+    const sel = selection.type==='sku' && selection.value===s.id;
+    return `<tr onclick="setSelection('sku','${s.id}','SKU: ${s.sku}')" style="cursor:pointer" data-selected="${sel}">
+      <td><strong>${s.sku}</strong></td><td>${s.category}</td><td>${s.warehouse}</td>
+      <td class="${s.onHand>s.reorderMax?'val-red':s.onHand<s.reorderMin?'val-amber':''}">${s.onHand.toLocaleString()}</td>
+      <td>${s.reorderMin.toLocaleString()}</td>
+      <td>${s.reorderMax.toLocaleString()}</td>
+      <td><span class="pill ${sc}">${s.status}</span></td>
+      <td>${impactVal}</td>
+    </tr>`;
+  }).join('');
+}
+
+function updateInsights(data) {
+  const yr = state.year;
+  const deadVal   = data.filter(s=>s.movement==='Dead').reduce((a,s)=>a+s.stockValue,0);
+  const highRisk  = data.filter(s=>s.riskLevel==='High').length;
+  const overVal   = data.filter(s=>s.status==='Over').reduce((a,s)=>a+Math.max(0,s.onHand-s.reorderMax)*s.unitValue,0);
+  const totalShrinkVal = data.reduce((a,s)=>a+s.unexplainedUnits*s.unitValue,0);
+
+  document.getElementById('insight-shrinkage').innerHTML =
+    `<strong>Shrinkage Summary — ${yr}</strong>` +
+    (data.length ? `${highRisk} high-risk SKU${highRisk!==1?'s':''} identified. Total unexplained stock exposure: ${fmtV(totalShrinkVal)}. Small, high-frequency consumables and packaging items consistently show the highest variance — these require cycle count priority and access control review.` : 'No data for this selection.');
+
+  document.getElementById('insight-levels').innerHTML =
+    `<strong>Working Capital Alert — ${yr}</strong>` +
+    (data.length ? `${fmtV(deadVal)} is tied up in dead or near-dead stock. A further ${fmtV(overVal)} sits in excess of reorder maximums. This capital is not generating returns — it is absorbing warehouse space, increasing handling cost, and masking true cash flow.` : 'No data for this selection.');
+  setTimeout(injectTips, 0);
+}
+
+renderAll();
+
+// ── DEFINITIONS & TOOLTIP INJECTION ──────────────────────────
+const DEFINITIONS = {
+  // KPI labels
+  'Total Stock Value':  'Combined cost value of all stock on hand across the selected SKUs, warehouses, and categories.',
+  'Fast-Moving SKUs':   'SKUs with a turnover rate above 10x per year and fewer than 35 days on hand. These items are working — capital cycles through them quickly and generates returns.',
+  'Dead Stock Value':   'Rand value of stock classified as dead: turnover below 3x per year or more than 100 days on hand. This capital is idle and generating no return.',
+  'Avg Days on Hand':   'Average number of days the current stock level would last at the current rate of consumption. Lower is generally better, within safety stock limits.',
+  // Filters
+  'Year':       'Select the reporting year. SKU lists update to reflect new lines introduced or discontinued in that year.',
+  'Warehouse':  'Filter to a specific storage location. Each SKU belongs to one warehouse — selecting one genuinely changes which SKUs appear.',
+  'Category':   'Filter by product category to focus analysis on one area of inventory. Categories have different movement patterns and risk profiles.',
+  // Panel titles — Tab 1
+  'Stock Value by Movement Class':    'Total stock value per category, stacked into Fast (working), Slow (lagging), and Dead (idle) buckets. The red portion is capital that is not generating any return. Click a category bar to cross-filter.',
+  'Turnover Rate by Category':        'Average number of times per year that stock in each category is fully consumed and replenished. Higher = capital is cycling efficiently. Below 4x warrants review.',
+  'SKU Performance Scorecard':        'Full SKU list with movement class, days on hand, and working capital share. Click any row to cross-filter the report to that single SKU.',
+  // Panel titles — Tab 2
+  'Shrinkage % by Category':          'Average percentage of expected stock that cannot be accounted for, by category. Causes include theft, damage, administrative error, and spoilage. Click a bar to cross-filter.',
+  'Expected vs Actual Stock Units':   'For high-risk SKUs only: what the system says should be in stock versus what a physical count confirms is there. The gap is unexplained loss with a direct rand value.',
+  'Shrinkage & Risk Register':        'All SKUs ranked by shrinkage rate. Exposure Value shows the rand cost of unexplained units. Click any row to cross-filter.',
+  // Panel titles — Tab 3
+  'Stock Status by Category':         'Count of SKUs in each category classified as overstocked, understocked, or within the correct reorder range. Click a bar to cross-filter by category.',
+  'Working Capital Tied Up in Overstock': 'Rand value of stock held above the reorder maximum per SKU. This excess is working capital that could be deployed more productively elsewhere in the business.',
+  'Stock Level Health Register':      'All SKUs showing on-hand stock count against reorder min and max, with the rand value impact of any deviation from the correct range.',
+  // Column headers — Tab 1
+  'SKU':              'The name of the stock-keeping unit — an individual product or material line tracked in inventory.',
+  'Stock Value':      'Rand value of the current on-hand stock for this SKU, at cost price.',
+  'Days on Hand':     'How many days the current stock level will last at the current rate of consumption. Above 100 days is classified as Dead.',
+  'Turnover Rate':    'Number of times this SKU\'s full stock is consumed and replenished per year. Below 3x = Dead. 3–10x = Slow. Above 10x = Fast.',
+  'Working Capital':  'This SKU\'s share of total selected stock value. A high share in a Dead SKU means a large portion of capital is not working.',
+  'Movement':         'Fast = turnover ≥10x and ≤35 days on hand. Dead = turnover ≤3x or ≥100 days on hand. Slow = everything in between.',
+  // Column headers — Tab 2
+  'Shrinkage %':         'Percentage of expected stock that is unaccounted for. Above 3% warrants investigation. Above 5% requires immediate action and access control review.',
+  'Unexplained Units':   'Units missing with no documented reason such as an approved write-off or a damage record. These represent genuine unexplained loss.',
+  'Unit Value':          'Rand value per individual unit. Higher unit value significantly amplifies the financial impact of any shrinkage or unexplained variance.',
+  'Exposure Value':      'Unexplained units multiplied by unit value. The direct rand cost of shrinkage for this SKU in the selected period.',
+  'Risk Level':          'Combined risk score based on unit value, shrinkage rate, unexplained volume, and access control rating. High = requires priority audit and physical verification.',
+  // Column headers — Tab 3
+  'On Hand':             'Current physical stock count for this SKU as recorded in the system.',
+  'Reorder Min':         'The minimum stock level. Falling below this triggers a replenishment order. Being below min risks a stockout and operational disruption.',
+  'Reorder Max':         'The maximum stock level. Exceeding this means capital is tied up in stock beyond what is needed for normal operations.',
+  'Status':              'Over = stock exceeds reorder max. Under = stock is below reorder min. Correct = stock is within the acceptable range.',
+  'Excess / Shortfall Value': 'Rand impact of the deviation. Excess = (on hand minus reorder max) × unit cost. Shortfall = (reorder min minus on hand) × unit cost.',
+};
+
+function injectTips() {
+  document.querySelectorAll('.tip').forEach(t => t.remove());
+  document.querySelectorAll('.kpi-label, .panel-title, .filter-label, .data-table th').forEach(el => {
+    const text = el.textContent.trim().replace(/\s+/g,' ');
+    const def = DEFINITIONS[text];
+    if (def) {
+      const tip = document.createElement('span');
+      tip.className = 'tip'; tip.setAttribute('data-tip', def); tip.textContent = '?';
+      el.appendChild(tip);
+    }
+  });
+}
+injectTips();
+</script>
+</body>
+</html>

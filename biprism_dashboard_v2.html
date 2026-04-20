@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Company XYZ – Sales & Customer Intelligence</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #f3f2f1; --panel: #ffffff; --border: #e1dfdd;
+    --accent: #0078d4; --accent2: #107c10; --warn: #d83b01;
+    --text: #252423; --subtext: #605e5c;
+    --header-bg: #243a5e; --header-fg: #ffffff;
+    --shadow: 0 1px 4px rgba(0,0,0,0.12); --radius: 4px;
+  }
+  body { font-family: 'Segoe UI','Helvetica Neue',Arial,sans-serif; background: var(--bg); color: var(--text); font-size: 13px; min-height: 100vh; }
+
+  .pbi-header { background: var(--header-bg); color: var(--header-fg); padding: 10px 20px; display: flex; align-items: center; justify-content: space-between; }
+  .report-title { font-size: 16px; font-weight: 700; }
+  .report-sub { font-size: 11px; opacity: 0.7; margin-top: 2px; }
+  .tabs { display: flex; gap: 4px; }
+  .tab-btn { background: rgba(255,255,255,0.12); border: none; color: #fff; padding: 5px 14px; border-radius: 3px; cursor: pointer; font-size: 12px; font-family: inherit; transition: background 0.15s; }
+  .tab-btn.active { background: rgba(255,255,255,0.28); font-weight: 700; }
+  .tab-btn:hover { background: rgba(255,255,255,0.22); }
+
+  .filter-bar { background: var(--panel); border-bottom: 1px solid var(--border); padding: 8px 20px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .filter-group { display: flex; align-items: center; gap: 6px; }
+  .filter-label { font-size: 11px; color: var(--subtext); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+  .slicer-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+  .chip { padding: 3px 10px; border-radius: 12px; border: 1px solid var(--border); background: #fff; cursor: pointer; font-size: 11px; font-family: inherit; color: var(--subtext); transition: all 0.12s; }
+  .chip.active { background: #deeffe; border-color: var(--accent); color: var(--accent); font-weight: 700; }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+  .filter-divider { width: 1px; height: 22px; background: var(--border); }
+  .reset-btn { margin-left: auto; background: none; border: 1px solid var(--border); padding: 3px 12px; border-radius: 3px; cursor: pointer; font-size: 11px; font-family: inherit; color: var(--subtext); }
+  .reset-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .canvas { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+
+  .kpi-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
+  .kpi-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+  .kpi-card::after { content:''; position:absolute; left:0;top:0;bottom:0;width:4px; }
+  .kpi-card.blue::after { background: var(--accent); }
+  .kpi-card.green::after { background: var(--accent2); }
+  .kpi-card.red::after { background: var(--warn); }
+  .kpi-card.yellow::after { background: #b07800; }
+  .kpi-label { font-size: 11px; color: var(--subtext); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+  .kpi-value { font-size: 26px; font-weight: 700; line-height: 1; }
+  .kpi-value.blue { color: var(--accent); } .kpi-value.green { color: var(--accent2); } .kpi-value.red { color: var(--warn); } .kpi-value.yellow { color: #b07800; }
+  .kpi-delta { font-size: 11px; margin-top: 5px; }
+  .kpi-delta.up { color: var(--accent2); } .kpi-delta.down { color: var(--warn); } .kpi-delta.neutral { color: var(--subtext); }
+
+  .chart-row { display: grid; gap: 10px; }
+  .chart-row.two { grid-template-columns: 1fr 1fr; }
+  .chart-panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; }
+  .panel-header { display: flex; align-items: flex-start; justify-content: space-between; }
+  .panel-title { font-size: 12px; font-weight: 700; }
+  .panel-sub { font-size: 11px; color: var(--subtext); margin-top: 2px; }
+  .panel-badge { font-size: 10px; padding: 2px 8px; border-radius: 10px; font-weight: 700; white-space: nowrap; }
+  .panel-badge.info { background: #deeffe; color: var(--accent); }
+  .panel-badge.warn { background: #fde7d9; color: var(--warn); }
+  .panel-badge.ok { background: #dff6dd; color: var(--accent2); }
+  .chart-wrap { position: relative; }
+
+  .data-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+  .data-table th { background: #f8f7f6; border-bottom: 2px solid var(--border); padding: 7px 10px; text-align: left; font-weight: 700; font-size: 11px; color: var(--subtext); text-transform: uppercase; letter-spacing: 0.04em; }
+  .data-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: #f8f7f6; }
+
+  .risk-pill { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+  .risk-high { background: #fde7d9; color: var(--warn); }
+  .risk-med { background: #fff4ce; color: #7a5700; }
+  .risk-low { background: #dff6dd; color: var(--accent2); }
+
+  .mini-bar-wrap { display: flex; align-items: center; gap: 6px; }
+  .mini-bar-bg { flex:1; height:6px; background:#edebe9; border-radius:3px; }
+  .mini-bar-fill { height:100%; border-radius:3px; background: var(--accent); }
+  .mini-bar-val { font-size:11px; color:var(--subtext); width:38px; text-align:right; }
+
+  .margin-neg { color: var(--warn); font-weight: 700; }
+  .margin-pos { color: var(--accent2); font-weight: 700; }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: flex; flex-direction: column; gap: 14px; }
+
+  .insight-box { background: #deeffe; border-left: 4px solid var(--accent); padding: 10px 14px; border-radius: 0 4px 4px 0; font-size: 12px; color: #004c87; }
+  .insight-box strong { display: block; margin-bottom: 3px; }
+
+  .empty-state { padding: 30px; text-align: center; color: var(--subtext); font-size: 12px; }
+
+  .pbi-footer { background: var(--panel); border-top: 1px solid var(--border); padding: 6px 20px; font-size: 10px; color: var(--subtext); display: flex; justify-content: space-between; }
+
+  @media (max-width: 900px) {
+    .kpi-row { grid-template-columns: repeat(2,1fr); }
+    .chart-row.two { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="pbi-header">
+  <div>
+    <div class="report-title">Sales & Customer Intelligence</div>
+    <div class="report-sub">Company XYZ · Illustrative Report · For demonstration only</div>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('profitability',this)">Customer Profitability</button>
+    <button class="tab-btn" onclick="switchTab('churn',this)">Churn Risk</button>
+    <button class="tab-btn" onclick="switchTab('margins',this)">Margin Erosion</button>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <div class="filter-group">
+    <span class="filter-label">Year</span>
+    <div class="slicer-chips" id="filter-year">
+      <button class="chip" onclick="setFilter('year','2022',this)">2022</button>
+      <button class="chip" onclick="setFilter('year','2023',this)">2023</button>
+      <button class="chip active" onclick="setFilter('year','2024',this)">2024</button>
+    </div>
+  </div>
+  <div class="filter-divider"></div>
+  <div class="filter-group">
+    <span class="filter-label">Region</span>
+    <div class="slicer-chips" id="filter-region">
+      <button class="chip active" onclick="setFilter('region','All',this)">All</button>
+      <button class="chip" onclick="setFilter('region','North',this)">North</button>
+      <button class="chip" onclick="setFilter('region','South',this)">South</button>
+      <button class="chip" onclick="setFilter('region','East',this)">East</button>
+      <button class="chip" onclick="setFilter('region','West',this)">West</button>
+    </div>
+  </div>
+  <div class="filter-divider"></div>
+  <div class="filter-group">
+    <span class="filter-label">Segment</span>
+    <div class="slicer-chips" id="filter-segment">
+      <button class="chip active" onclick="setFilter('segment','All',this)">All</button>
+      <button class="chip" onclick="setFilter('segment','Enterprise',this)">Enterprise</button>
+      <button class="chip" onclick="setFilter('segment','Mid-Market',this)">Mid-Market</button>
+      <button class="chip" onclick="setFilter('segment','SME',this)">SME</button>
+    </div>
+  </div>
+  <button class="reset-btn" onclick="resetFilters()">↺ Reset</button>
+</div>
+
+<div id="selection-bar" style="display:none; background:#fff4ce; border-bottom:1px solid #f0d060; padding:7px 20px; font-size:12px; color:#7a5700; display:none; align-items:center; gap:10px;">
+  <span>🔍 <strong>Cross-filter active:</strong> <span id="selection-label"></span></span>
+  <button onclick="clearSelection()" style="margin-left:8px; background:none; border:1px solid #b07800; color:#7a5700; padding:2px 10px; border-radius:10px; cursor:pointer; font-size:11px; font-family:inherit;">✕ Clear selection</button>
+  <span style="margin-left:auto; font-size:11px; opacity:0.7;">Click the same item again to deselect · Click any other item to switch</span>
+</div>
+
+<div class="canvas">
+  <div class="kpi-row">
+    <div class="kpi-card blue"><div class="kpi-label">Total Revenue</div><div class="kpi-value blue" id="kpi-revenue">–</div><div class="kpi-delta" id="kpi-rev-delta"></div></div>
+    <div class="kpi-card green"><div class="kpi-label">Avg Gross Margin %</div><div class="kpi-value green" id="kpi-margin">–</div><div class="kpi-delta" id="kpi-margin-delta"></div></div>
+    <div class="kpi-card yellow"><div class="kpi-label">At-Risk Customers</div><div class="kpi-value yellow" id="kpi-atrisk">–</div><div class="kpi-delta" id="kpi-atrisk-delta"></div></div>
+    <div class="kpi-card red"><div class="kpi-label">High Churn Risk</div><div class="kpi-value red" id="kpi-lost">–</div><div class="kpi-delta" id="kpi-lost-delta"></div></div>
+  </div>
+
+  <!-- PROFITABILITY TAB -->
+  <div class="tab-content active" id="tab-profitability">
+    <div class="chart-row two">
+      <div class="chart-panel">
+        <div class="panel-header"><div><div class="panel-title">Revenue vs Gross Profit by Customer</div><div class="panel-sub">Sorted by revenue · selected filters</div></div><span class="panel-badge info" id="badge-top3">–</span></div>
+        <div class="chart-wrap" style="height:240px"><canvas id="chart-revenue-profit"></canvas></div>
+      </div>
+      <div class="chart-panel">
+        <div class="panel-header"><div><div class="panel-title">Gross Profit by Segment</div><div class="panel-sub">Share of total gross profit</div></div><span class="panel-badge info">Segment split</span></div>
+        <div class="chart-wrap" style="height:240px"><canvas id="chart-profit-donut"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-panel">
+      <div class="panel-header"><div><div class="panel-title">Customer Profitability Scorecard</div><div class="panel-sub">Revenue, margin %, and profit status</div></div><span class="panel-badge warn" id="badge-under-pressure">–</span></div>
+      <table class="data-table"><thead><tr><th>Customer</th><th>Segment</th><th>Region</th><th>Revenue</th><th>Revenue Share</th><th>Gross Margin %</th><th>Trend</th><th>Status</th></tr></thead><tbody id="tbody-profit"></tbody></table>
+    </div>
+  </div>
+
+  <!-- CHURN TAB -->
+  <div class="tab-content" id="tab-churn">
+    <div class="chart-row two">
+      <div class="chart-panel">
+        <div class="panel-header"><div><div class="panel-title">Purchase Frequency Trend</div><div class="panel-sub">Avg orders/quarter · at-risk vs stable</div></div><span class="panel-badge warn">At-risk declining</span></div>
+        <div class="chart-wrap" style="height:240px"><canvas id="chart-frequency"></canvas></div>
+      </div>
+      <div class="chart-panel">
+        <div class="panel-header"><div><div class="panel-title">Days Since Last Order</div><div class="panel-sub">Inactivity per customer · threshold 60 days</div></div><span class="panel-badge warn" id="badge-exceed">–</span></div>
+        <div class="chart-wrap" style="height:240px"><canvas id="chart-recency"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-panel">
+      <div class="panel-header"><div><div class="panel-title">Churn Risk Register</div><div class="panel-sub">Customers showing churn signals</div></div><span class="panel-badge warn" id="badge-churn-rev">–</span></div>
+      <table class="data-table"><thead><tr><th>Customer</th><th>Segment</th><th>Region</th><th>Last Order</th><th>Spend Trend (6m)</th><th>Freq Drop</th><th>Churn Risk</th><th>Revenue at Risk</th></tr></thead><tbody id="tbody-churn"></tbody></table>
+    </div>
+  </div>
+
+  <!-- MARGINS TAB -->
+  <div class="tab-content" id="tab-margins">
+    <div class="insight-box" id="insight-text"><strong>Key Finding</strong>Loading...</div>
+    <div class="chart-row two">
+      <div class="chart-panel">
+        <div class="panel-header"><div><div class="panel-title">Gross Margin % by Month</div><div class="panel-sub">12-month rolling trend · selected year</div></div><span class="panel-badge warn" id="badge-margin-trend">–</span></div>
+        <div class="chart-wrap" style="height:220px"><canvas id="chart-margin-trend"></canvas></div>
+      </div>
+      <div class="chart-panel">
+        <div class="panel-header"><div><div class="panel-title">Margin Drag by Behaviour Type</div><div class="panel-sub">Estimated pp impact on gross margin</div></div><span class="panel-badge warn">Discounting leads</span></div>
+        <div class="chart-wrap" style="height:220px"><canvas id="chart-margin-drag"></canvas></div>
+      </div>
+    </div>
+    <div class="chart-panel">
+      <div class="panel-header"><div><div class="panel-title">Customer Behaviour Impact on Margin</div><div class="panel-sub">Customers driving margin erosion through behaviour patterns</div></div><span class="panel-badge warn" id="badge-top5-drag">–</span></div>
+      <table class="data-table"><thead><tr><th>Customer</th><th>Avg Order Size</th><th>Discount Rate</th><th>Return Rate</th><th>Order Complexity</th><th>Net Margin %</th><th>Margin Impact</th></tr></thead><tbody id="tbody-margin"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<div class="pbi-footer">
+  <span>Company XYZ · Illustrative data only · Not for commercial use</span>
+  <span id="footer-ctx">Year: 2024 · All Regions · All Segments</span>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+// MASTER DATA: 22 customers, each assigned to one region,
+// with year-specific records. Some customers only exist in
+// certain years (new entrants, churned accounts).
+// ─────────────────────────────────────────────────────────────
+const MASTER = [
+  // NORTH REGION
+  { id:'C01', name:'Veltara Retail',    region:'North', segment:'Enterprise',
+    years: {
+      2022: { revenue:2800000, margin:40.1, trend:'up',     lastOrder:10, spendTrend:8,   freqDrop:0, churnRisk:'Low', discountRate:3.2, returnRate:1.0, complexity:'Low',   netMargin:37.2 },
+      2023: { revenue:3200000, margin:39.4, trend:'stable', lastOrder:9,  spendTrend:4,   freqDrop:0, churnRisk:'Low', discountRate:3.8, returnRate:1.1, complexity:'Low',   netMargin:36.1 },
+      2024: { revenue:3820000, margin:38.2, trend:'stable', lastOrder:12, spendTrend:-2,  freqDrop:0, churnRisk:'Low', discountRate:4.1, returnRate:1.2, complexity:'Low',   netMargin:34.1 },
+    }
+  },
+  { id:'C02', name:'Bryndal SA',        region:'North', segment:'Mid-Market',
+    years: {
+      2022: { revenue:1100000, margin:31.0, trend:'up',     lastOrder:8,  spendTrend:12,  freqDrop:0, churnRisk:'Low', discountRate:5.0, returnRate:1.8, complexity:'Low',   netMargin:28.0 },
+      2023: { revenue:1420000, margin:32.4, trend:'up',     lastOrder:6,  spendTrend:9,   freqDrop:0, churnRisk:'Low', discountRate:4.8, returnRate:1.6, complexity:'Low',   netMargin:29.5 },
+      2024: { revenue:1680000, margin:33.1, trend:'up',     lastOrder:5,  spendTrend:7,   freqDrop:0, churnRisk:'Low', discountRate:5.5, returnRate:1.9, complexity:'Low',   netMargin:29.8 },
+    }
+  },
+  { id:'C03', name:'Grevon Dist.',      region:'North', segment:'SME',
+    years: {
+      2022: { revenue:920000,  margin:33.0, trend:'stable', lastOrder:14, spendTrend:2,   freqDrop:1, churnRisk:'Low', discountRate:5.9, returnRate:2.0, complexity:'Low',   netMargin:29.4 },
+      2023: { revenue:890000,  margin:31.5, trend:'down',   lastOrder:18, spendTrend:-5,  freqDrop:2, churnRisk:'Low', discountRate:6.1, returnRate:2.2, complexity:'Low',   netMargin:27.8 },
+      2024: { revenue:870000,  margin:31.0, trend:'stable', lastOrder:11, spendTrend:1,   freqDrop:1, churnRisk:'Low', discountRate:6.3, returnRate:2.1, complexity:'Low',   netMargin:27.4 },
+    }
+  },
+  { id:'C04', name:'Zorkal Materials',  region:'North', segment:'Mid-Market',
+    // New customer — joined 2023
+    years: {
+      2023: { revenue:640000,  margin:27.8, trend:'up',     lastOrder:20, spendTrend:15,  freqDrop:0, churnRisk:'Low', discountRate:7.2, returnRate:2.8, complexity:'Medium',netMargin:22.4 },
+      2024: { revenue:980000,  margin:26.1, trend:'stable', lastOrder:17, spendTrend:3,   freqDrop:0, churnRisk:'Low', discountRate:8.0, returnRate:3.1, complexity:'Medium',netMargin:20.1 },
+    }
+  },
+  { id:'C05', name:'Halvex Trading',    region:'North', segment:'SME',
+    // Churned after 2022
+    years: {
+      2022: { revenue:310000,  margin:18.2, trend:'down',   lastOrder:55, spendTrend:-38, freqDrop:6, churnRisk:'High',discountRate:17.0, returnRate:8.1, complexity:'High',  netMargin:4.2 },
+    }
+  },
+
+  // SOUTH REGION
+  { id:'C06', name:'Draxon Group',      region:'South', segment:'Enterprise',
+    years: {
+      2022: { revenue:2600000, margin:42.5, trend:'up',     lastOrder:7,  spendTrend:11,  freqDrop:0, churnRisk:'Low', discountRate:2.5, returnRate:0.7, complexity:'Low',   netMargin:40.1 },
+      2023: { revenue:2890000, margin:41.8, trend:'stable', lastOrder:6,  spendTrend:6,   freqDrop:0, churnRisk:'Low', discountRate:2.7, returnRate:0.8, complexity:'Low',   netMargin:39.2 },
+      2024: { revenue:3150000, margin:41.0, trend:'up',     lastOrder:8,  spendTrend:3,   freqDrop:0, churnRisk:'Low', discountRate:2.8, returnRate:0.8, complexity:'Low',   netMargin:38.4 },
+    }
+  },
+  { id:'C07', name:'Caltrix Logistics', region:'South', segment:'Mid-Market',
+    years: {
+      2022: { revenue:1800000, margin:22.0, trend:'down',   lastOrder:28, spendTrend:-12, freqDrop:3, churnRisk:'Med', discountRate:14.0,returnRate:6.5, complexity:'High',  netMargin:10.1 },
+      2023: { revenue:1610000, margin:14.3, trend:'down',   lastOrder:39, spendTrend:-22, freqDrop:5, churnRisk:'High',discountRate:18.5,returnRate:8.4, complexity:'High',  netMargin:4.8  },
+      2024: { revenue:1420000, margin:8.2,  trend:'down',   lastOrder:44, spendTrend:-31, freqDrop:5, churnRisk:'High',discountRate:21.3,returnRate:9.8, complexity:'High',  netMargin:1.4  },
+    }
+  },
+  { id:'C08', name:'Zovrin Traders',    region:'South', segment:'SME',
+    years: {
+      2022: { revenue:780000,  margin:19.4, trend:'down',   lastOrder:33, spendTrend:-18, freqDrop:3, churnRisk:'Med', discountRate:16.0,returnRate:7.8, complexity:'High',  netMargin:6.4  },
+      2023: { revenue:710000,  margin:12.6, trend:'down',   lastOrder:51, spendTrend:-36, freqDrop:6, churnRisk:'High',discountRate:20.1,returnRate:10.2,complexity:'High',  netMargin:0.8  },
+      2024: { revenue:650000,  margin:9.1,  trend:'down',   lastOrder:67, spendTrend:-44, freqDrop:7, churnRisk:'High',discountRate:22.8,returnRate:11.4,complexity:'High',  netMargin:-2.1 },
+    }
+  },
+  { id:'C09', name:'Pelvax Brands',     region:'South', segment:'Mid-Market',
+    // New customer — joined 2024
+    years: {
+      2024: { revenue:870000,  margin:30.2, trend:'up',     lastOrder:11, spendTrend:22,  freqDrop:0, churnRisk:'Low', discountRate:5.1, returnRate:1.5, complexity:'Low',   netMargin:27.1 },
+    }
+  },
+  { id:'C10', name:'Durnvale Supply',   region:'South', segment:'SME',
+    // Churned after 2023
+    years: {
+      2022: { revenue:420000,  margin:28.0, trend:'stable', lastOrder:15, spendTrend:2,   freqDrop:1, churnRisk:'Low', discountRate:6.8, returnRate:2.4, complexity:'Low',   netMargin:24.1 },
+      2023: { revenue:310000,  margin:16.2, trend:'down',   lastOrder:48, spendTrend:-35, freqDrop:5, churnRisk:'High',discountRate:15.9,returnRate:8.9, complexity:'High',  netMargin:4.0  },
+    }
+  },
+
+  // EAST REGION
+  { id:'C11', name:'Molvex Corp',       region:'East',  segment:'Enterprise',
+    years: {
+      2022: { revenue:2900000, margin:28.4, trend:'down',   lastOrder:14, spendTrend:-8,  freqDrop:2, churnRisk:'Low', discountRate:12.0,returnRate:4.2, complexity:'Medium',netMargin:21.1 },
+      2023: { revenue:2580000, margin:22.1, trend:'down',   lastOrder:18, spendTrend:-12, freqDrop:3, churnRisk:'Med', discountRate:15.2,returnRate:5.1, complexity:'High',  netMargin:14.3 },
+      2024: { revenue:2270000, margin:17.3, trend:'down',   lastOrder:21, spendTrend:-15, freqDrop:3, churnRisk:'High',discountRate:18.4,returnRate:6.1, complexity:'High',  netMargin:9.8  },
+    }
+  },
+  { id:'C12', name:'Torven Mining',     region:'East',  segment:'Enterprise',
+    years: {
+      2022: { revenue:900000,  margin:42.0, trend:'up',     lastOrder:5,  spendTrend:14,  freqDrop:0, churnRisk:'Low', discountRate:2.0, returnRate:0.4, complexity:'Low',   netMargin:39.8 },
+      2023: { revenue:1100000, margin:43.5, trend:'up',     lastOrder:4,  spendTrend:13,  freqDrop:0, churnRisk:'Low', discountRate:1.9, returnRate:0.4, complexity:'Low',   netMargin:41.2 },
+      2024: { revenue:1290000, margin:44.8, trend:'up',     lastOrder:3,  spendTrend:12,  freqDrop:0, churnRisk:'Low', discountRate:1.9, returnRate:0.4, complexity:'Low',   netMargin:42.1 },
+    }
+  },
+  { id:'C13', name:'Veldrix Pharma',    region:'East',  segment:'Mid-Market',
+    years: {
+      2022: { revenue:480000,  margin:34.0, trend:'stable', lastOrder:9,  spendTrend:3,   freqDrop:0, churnRisk:'Low', discountRate:3.0, returnRate:1.0, complexity:'Low',   netMargin:31.2 },
+      2023: { revenue:530000,  margin:35.2, trend:'up',     lastOrder:8,  spendTrend:4,   freqDrop:0, churnRisk:'Low', discountRate:3.1, returnRate:1.0, complexity:'Low',   netMargin:32.4 },
+      2024: { revenue:590000,  margin:36.5, trend:'up',     lastOrder:7,  spendTrend:5,   freqDrop:0, churnRisk:'Low', discountRate:3.2, returnRate:1.0, complexity:'Low',   netMargin:33.7 },
+    }
+  },
+  { id:'C14', name:'Orvane Co-op',      region:'East',  segment:'SME',
+    // New customer — joined 2023
+    years: {
+      2023: { revenue:290000,  margin:24.0, trend:'up',     lastOrder:22, spendTrend:18,  freqDrop:0, churnRisk:'Low', discountRate:8.5, returnRate:3.0, complexity:'Medium',netMargin:18.4 },
+      2024: { revenue:410000,  margin:23.1, trend:'stable', lastOrder:19, spendTrend:5,   freqDrop:1, churnRisk:'Low', discountRate:9.0, returnRate:3.2, complexity:'Medium',netMargin:17.2 },
+    }
+  },
+
+  // WEST REGION
+  { id:'C15', name:'Sorvane Foods',     region:'West',  segment:'Mid-Market',
+    years: {
+      2022: { revenue:2200000, margin:34.0, trend:'stable', lastOrder:12, spendTrend:-3,  freqDrop:1, churnRisk:'Low', discountRate:7.0, returnRate:2.8, complexity:'Medium',netMargin:27.4 },
+      2023: { revenue:2050000, margin:31.8, trend:'down',   lastOrder:16, spendTrend:-6,  freqDrop:2, churnRisk:'Med', discountRate:8.4, returnRate:3.1, complexity:'Medium',netMargin:24.3 },
+      2024: { revenue:1940000, margin:29.4, trend:'down',   lastOrder:19, spendTrend:-8,  freqDrop:2, churnRisk:'Med', discountRate:9.2, returnRate:3.4, complexity:'Medium',netMargin:22.1 },
+    }
+  },
+  { id:'C16', name:'Flurox Retail',     region:'West',  segment:'SME',
+    years: {
+      2022: { revenue:1200000, margin:30.5, trend:'stable', lastOrder:22, spendTrend:-5,  freqDrop:1, churnRisk:'Low', discountRate:9.1, returnRate:3.9, complexity:'Medium',netMargin:23.8 },
+      2023: { revenue:1100000, margin:26.4, trend:'down',   lastOrder:30, spendTrend:-14, freqDrop:3, churnRisk:'Med', discountRate:12.0,returnRate:5.5, complexity:'Medium',netMargin:17.1 },
+      2024: { revenue:980000,  margin:22.7, trend:'down',   lastOrder:38, spendTrend:-22, freqDrop:4, churnRisk:'High',discountRate:14.7,returnRate:7.2, complexity:'Medium',netMargin:11.3 },
+    }
+  },
+  { id:'C17', name:'Prenvox Supplies',  region:'West',  segment:'SME',
+    years: {
+      2022: { revenue:560000,  margin:22.0, trend:'stable', lastOrder:18, spendTrend:-4,  freqDrop:1, churnRisk:'Low', discountRate:10.2,returnRate:3.8, complexity:'Medium',netMargin:16.2 },
+      2023: { revenue:490000,  margin:17.1, trend:'down',   lastOrder:36, spendTrend:-20, freqDrop:4, churnRisk:'Med', discountRate:14.1,returnRate:4.8, complexity:'Medium',netMargin:9.8  },
+      2024: { revenue:420000,  margin:14.2, trend:'down',   lastOrder:52, spendTrend:-28, freqDrop:5, churnRisk:'Med', discountRate:16.9,returnRate:5.5, complexity:'Medium',netMargin:5.9  },
+    }
+  },
+  { id:'C18', name:'Vestrax Group',     region:'West',  segment:'Enterprise',
+    // New customer — joined 2023
+    years: {
+      2023: { revenue:1480000, margin:37.2, trend:'up',     lastOrder:8,  spendTrend:20,  freqDrop:0, churnRisk:'Low', discountRate:3.9, returnRate:1.2, complexity:'Low',   netMargin:34.4 },
+      2024: { revenue:1850000, margin:36.8, trend:'stable', lastOrder:9,  spendTrend:8,   freqDrop:0, churnRisk:'Low', discountRate:4.2, returnRate:1.3, complexity:'Low',   netMargin:33.1 },
+    }
+  },
+  { id:'C19', name:'Lumivex Packaging', region:'West',  segment:'SME',
+    // Churned after 2022
+    years: {
+      2022: { revenue:340000,  margin:13.5, trend:'down',   lastOrder:61, spendTrend:-42, freqDrop:7, churnRisk:'High',discountRate:20.5,returnRate:10.8,complexity:'High',  netMargin:0.4  },
+    }
+  },
+
+  // ADDITIONAL cross-region flavour
+  { id:'C20', name:'Caldrix Exports',   region:'East',  segment:'Mid-Market',
+    years: {
+      2022: { revenue:720000,  margin:29.2, trend:'stable', lastOrder:16, spendTrend:1,   freqDrop:1, churnRisk:'Low', discountRate:7.4, returnRate:2.6, complexity:'Medium',netMargin:23.8 },
+      2023: { revenue:760000,  margin:30.1, trend:'up',     lastOrder:14, spendTrend:5,   freqDrop:0, churnRisk:'Low', discountRate:7.0, returnRate:2.4, complexity:'Low',   netMargin:25.2 },
+      2024: { revenue:800000,  margin:30.8, trend:'up',     lastOrder:11, spendTrend:4,   freqDrop:0, churnRisk:'Low', discountRate:6.8, returnRate:2.3, complexity:'Low',   netMargin:26.0 },
+    }
+  },
+  { id:'C21', name:'Norflex Mfg.',      region:'North', segment:'Enterprise',
+    // Joined 2024 — major new account
+    years: {
+      2024: { revenue:2100000, margin:35.4, trend:'up',     lastOrder:6,  spendTrend:30,  freqDrop:0, churnRisk:'Low', discountRate:4.5, returnRate:1.1, complexity:'Low',   netMargin:32.2 },
+    }
+  },
+  { id:'C22', name:'Sablorn Industries',region:'South', segment:'Enterprise',
+    years: {
+      2022: { revenue:1900000, margin:36.8, trend:'stable', lastOrder:11, spendTrend:2,   freqDrop:0, churnRisk:'Low', discountRate:4.0, returnRate:1.3, complexity:'Low',   netMargin:33.8 },
+      2023: { revenue:2050000, margin:37.4, trend:'up',     lastOrder:9,  spendTrend:6,   freqDrop:0, churnRisk:'Low', discountRate:3.8, returnRate:1.2, complexity:'Low',   netMargin:34.4 },
+      2024: { revenue:2240000, margin:38.1, trend:'up',     lastOrder:7,  spendTrend:8,   freqDrop:0, churnRisk:'Low', discountRate:3.5, returnRate:1.1, complexity:'Low',   netMargin:35.2 },
+    }
+  },
+];
+
+// Margin trend and drag are now derived from filtered data in renderMarginTrend(data) and renderMarginDrag(data)
+
+// ── STATE ──────────────────────────────────────────────────────
+let state = { year: '2024', region: 'All', segment: 'All' };
+let selection = { type: null, value: null }; // type: 'customer' | 'segment'
+
+function getData() {
+  const yr = parseInt(state.year);
+  return MASTER
+    .filter(c => c.years[yr])
+    .filter(c => state.region === 'All' || c.region === state.region)
+    .filter(c => state.segment === 'All' || c.segment === state.segment)
+    .filter(c => {
+      if (!selection.type) return true;
+      if (selection.type === 'customer') return c.id === selection.value;
+      if (selection.type === 'segment') return c.segment === selection.value;
+      return true;
+    })
+    .map(c => ({ ...c, ...c.years[yr] }));
+}
+
+// Full unfiltered-by-selection data (used for charts that show context)
+function getBaseData() {
+  const yr = parseInt(state.year);
+  return MASTER
+    .filter(c => c.years[yr])
+    .filter(c => state.region === 'All' || c.region === state.region)
+    .filter(c => state.segment === 'All' || c.segment === state.segment)
+    .map(c => ({ ...c, ...c.years[yr] }));
+}
+
+// ── FILTERS ────────────────────────────────────────────────────
+function setFilter(type, value, btn) {
+  state[type] = value;
+  document.querySelectorAll(`#filter-${type} .chip`).forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  renderAll();
+}
+
+function setSelection(type, value, label) {
+  if (selection.type === type && selection.value === value) {
+    clearSelection(); return;
+  }
+  selection = { type, value };
+  const bar = document.getElementById('selection-bar');
+  bar.style.display = 'flex';
+  document.getElementById('selection-label').textContent = label;
+  renderAll();
+}
+
+function clearSelection() {
+  selection = { type: null, value: null };
+  document.getElementById('selection-bar').style.display = 'none';
+  renderAll();
+}
+
+function resetFilters() {
+  state = { year: '2024', region: 'All', segment: 'All' };
+  clearSelection();
+  ['year','region','segment'].forEach(t => {
+    document.querySelectorAll(`#filter-${t} .chip`).forEach(c => c.classList.remove('active'));
+  });
+  document.querySelector('#filter-year .chip:nth-child(3)').classList.add('active');
+  document.querySelector('#filter-region .chip:first-child').classList.add('active');
+  document.querySelector('#filter-segment .chip:first-child').classList.add('active');
+  renderAll();
+}
+
+// ── TAB ────────────────────────────────────────────────────────
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ── CHARTS ─────────────────────────────────────────────────────
+const charts = {};
+function kill(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+function fmt(n) { return n >= 1000000 ? 'R '+(n/1000000).toFixed(1)+'M' : n >= 1000 ? 'R '+(n/1000).toFixed(0)+'K' : 'R '+n; }
+
+// ── RENDER ALL ─────────────────────────────────────────────────
+function renderAll() {
+  const data = getData();
+  document.getElementById('footer-ctx').textContent = `Year: ${state.year} · Region: ${state.region} · Segment: ${state.segment}`;
+
+  updateKPIs(data);
+  renderRevProfit(data);
+  renderDonut(data);
+  renderProfitTable(data);
+  renderFrequency(data);
+  renderRecency(data);
+  renderChurnTable(data);
+  renderMarginTrend(data);
+  renderMarginDrag(data);
+  renderMarginTable(data);
+  updateInsight(data);
+}
+
+function updateKPIs(data) {
+  if (!data.length) {
+    ['kpi-revenue','kpi-margin','kpi-atrisk','kpi-lost'].forEach(id => document.getElementById(id).textContent = '–');
+    ['kpi-rev-delta','kpi-margin-delta','kpi-atrisk-delta','kpi-lost-delta'].forEach(id => { document.getElementById(id).textContent = 'No data for selection'; document.getElementById(id).className = 'kpi-delta neutral'; });
+    return;
+  }
+  const totalRev = data.reduce((s,c) => s+c.revenue, 0);
+  const wtdMargin = data.reduce((s,c) => s+c.margin*c.revenue, 0) / totalRev;
+  const atRisk = data.filter(c => c.churnRisk === 'High' || c.churnRisk === 'Med').length;
+  const highRisk = data.filter(c => c.churnRisk === 'High').length;
+
+  document.getElementById('kpi-revenue').textContent = fmt(totalRev);
+  document.getElementById('kpi-margin').textContent = wtdMargin.toFixed(1) + '%';
+  document.getElementById('kpi-atrisk').textContent = atRisk;
+  document.getElementById('kpi-lost').textContent = highRisk;
+
+  const yr = parseInt(state.year);
+  const prevData = MASTER.filter(c => c.years[yr-1])
+    .filter(c => state.region === 'All' || c.region === state.region)
+    .filter(c => state.segment === 'All' || c.segment === state.segment)
+    .map(c => ({ ...c, ...c.years[yr-1] }));
+
+  if (prevData.length && yr > 2022) {
+    const prevRev = prevData.reduce((s,c) => s+c.revenue, 0);
+    const prevMargin = prevData.reduce((s,c) => s+c.margin*c.revenue, 0) / prevRev;
+    const revChg = ((totalRev - prevRev) / prevRev * 100).toFixed(1);
+    const mrgChg = (wtdMargin - prevMargin).toFixed(1);
+
+    const rd = document.getElementById('kpi-rev-delta');
+    rd.textContent = (revChg >= 0 ? '▲ ' : '▼ ') + Math.abs(revChg) + '% vs prior year';
+    rd.className = 'kpi-delta ' + (revChg >= 0 ? 'up' : 'down');
+
+    const md = document.getElementById('kpi-margin-delta');
+    md.textContent = (mrgChg >= 0 ? '▲ ' : '▼ ') + Math.abs(mrgChg) + 'pp vs prior year';
+    md.className = 'kpi-delta ' + (mrgChg >= 0 ? 'up' : 'down');
+  } else {
+    document.getElementById('kpi-rev-delta').textContent = 'Base year';
+    document.getElementById('kpi-rev-delta').className = 'kpi-delta neutral';
+    document.getElementById('kpi-margin-delta').textContent = 'Base year';
+    document.getElementById('kpi-margin-delta').className = 'kpi-delta neutral';
+  }
+
+  document.getElementById('kpi-atrisk-delta').textContent = `${atRisk} of ${data.length} customers`;
+  document.getElementById('kpi-atrisk-delta').className = 'kpi-delta ' + (atRisk > 3 ? 'down' : 'neutral');
+  document.getElementById('kpi-lost-delta').textContent = highRisk > 0 ? `Immediate attention needed` : 'No high-risk customers';
+  document.getElementById('kpi-lost-delta').className = 'kpi-delta ' + (highRisk > 0 ? 'down' : 'up');
+}
+
+function renderRevProfit(data) {
+  kill('revprofit');
+  const base = getBaseData();
+  const sorted = [...base].sort((a,b) => b.revenue-a.revenue);
+  const totalRev = sorted.reduce((s,c) => s+c.revenue, 0);
+  const top3pct = sorted.slice(0,3).reduce((s,c) => s+c.revenue, 0) / totalRev * 100;
+  document.getElementById('badge-top3').textContent = sorted.length >= 3 ? `Top 3 = ${top3pct.toFixed(0)}% of revenue` : `${sorted.length} customers`;
+
+  if (!sorted.length) return;
+
+  const isSelected = c => selection.type === 'customer' && selection.value === c.id;
+  const anySelected = selection.type === 'customer';
+
+  const ctx = document.getElementById('chart-revenue-profit').getContext('2d');
+  charts['revprofit'] = new Chart(ctx, {
+    type:'bar',
+    data: {
+      labels: sorted.map(c => c.name),
+      datasets: [
+        { label:'Revenue', data: sorted.map(c => c.revenue),
+          backgroundColor: sorted.map(c => anySelected ? (isSelected(c) ? 'rgba(0,120,212,0.9)' : 'rgba(0,120,212,0.2)') : 'rgba(0,120,212,0.75)'),
+          borderRadius:2 },
+        { label:'Gross Profit', data: sorted.map(c => c.revenue*c.margin/100),
+          backgroundColor: sorted.map(c => anySelected ? (isSelected(c) ? 'rgba(16,124,16,0.9)' : 'rgba(16,124,16,0.2)') : 'rgba(16,124,16,0.75)'),
+          borderRadius:2 }
+      ]
+    },
+    options: { responsive:true, maintainAspectRatio:false,
+      onClick(evt) {
+        const pts = charts['revprofit'].getElementsAtEventForMode(evt, 'index', { intersect:false }, true);
+        if (pts.length) {
+          const c = sorted[pts[0].index];
+          setSelection('customer', c.id, `Customer: ${c.name}`);
+        }
+      },
+      plugins: { legend:{ position:'top', labels:{ font:{size:11}, boxWidth:12 } } },
+      scales: {
+        x: { ticks:{ font:{size:10}, maxRotation:35 }, grid:{display:false} },
+        y: { ticks:{ font:{size:10}, callback: v => 'R'+(v/1000).toFixed(0)+'K' }, grid:{color:'#f0eeec'} }
+      }
+    }
+  });
+}
+
+function renderDonut(data) {
+  kill('donut');
+  const base = getBaseData();
+  if (!base.length) return;
+  const segs = ['Enterprise','Mid-Market','SME'];
+  const vals = segs.map(s => base.filter(c => c.segment===s).reduce((sum,c) => sum+c.revenue*c.margin/100, 0));
+  const total = vals.reduce((a,b) => a+b, 0);
+  const anySegSel = selection.type === 'segment';
+  const ctx = document.getElementById('chart-profit-donut').getContext('2d');
+  charts['donut'] = new Chart(ctx, {
+    type:'doughnut',
+    data: { labels: segs, datasets:[{
+      data:vals,
+      backgroundColor: segs.map((s,i) => {
+        const base = ['#0078d4','#00b294','#ffaa44'][i];
+        if (!anySegSel) return base;
+        return selection.value === s ? base : base + '44';
+      }),
+      borderWidth:2, borderColor:'#fff'
+    }]},
+    options: { responsive:true, maintainAspectRatio:false,
+      onClick(evt) {
+        const pts = charts['donut'].getElementsAtEventForMode(evt, 'nearest', { intersect:true }, true);
+        if (pts.length) {
+          const seg = segs[pts[0].index];
+          setSelection('segment', seg, `Segment: ${seg}`);
+        }
+      },
+      plugins:{ legend:{ position:'right', labels:{ font:{size:11}, boxWidth:12,
+        generateLabels(chart) {
+          return chart.data.labels.map((label,i) => ({
+            text: label + ' ' + (total > 0 ? (chart.data.datasets[0].data[i]/total*100).toFixed(0) : 0) + '%',
+            fillStyle: ['#0078d4','#00b294','#ffaa44'][i], hidden:false, index:i
+          }));
+        }
+      }}}
+    }
+  });
+}
+
+function renderProfitTable(data) {
+  const sorted = [...data].sort((a,b) => b.revenue-a.revenue);
+  const totalRev = sorted.reduce((s,c) => s+c.revenue, 0);
+  const underPressure = sorted.filter(c => c.margin < 20).length;
+  document.getElementById('badge-under-pressure').textContent = underPressure > 0 ? `${underPressure} customer${underPressure>1?'s':''} under margin pressure` : 'All margins healthy';
+  const tbody = document.getElementById('tbody-profit');
+  if (!sorted.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No customers match the current filter selection.</td></tr>'; return; }
+  tbody.innerHTML = sorted.map(c => {
+    const share = (c.revenue/totalRev*100).toFixed(1);
+    const barW = Math.min(100, parseFloat(share)*3);
+    const arrow = c.trend==='up' ? '<span style="color:#107c10">▲</span>' : c.trend==='down' ? '<span style="color:#d83b01">▼</span>' : '─';
+    const pill = c.margin < 15 ? '<span class="risk-pill risk-high">Under Pressure</span>' : c.margin < 25 ? '<span class="risk-pill risk-med">Watch</span>' : '<span class="risk-pill risk-low">Healthy</span>';
+    const mc = c.margin < 15 ? 'margin-neg' : 'margin-pos';
+    const sel = selection.type === 'customer' && selection.value === c.id;
+    return `<tr onclick="setSelection('customer','${c.id}','Customer: ${c.name}')" style="cursor:pointer;${sel?'background:#deeffe;':''}">`+
+      `<td><strong>${c.name}</strong></td><td>${c.segment}</td><td>${c.region}</td><td>${fmt(c.revenue)}</td>
+      <td><div class="mini-bar-wrap"><div class="mini-bar-bg"><div class="mini-bar-fill" style="width:${barW}%"></div></div><span class="mini-bar-val">${share}%</span></div></td>
+      <td class="${mc}">${c.margin.toFixed(1)}%</td><td>${arrow}</td><td>${pill}</td></tr>`;
+  }).join('');
+}
+
+function renderFrequency(data) {
+  kill('frequency');
+  const labels = ['Q1','Q2','Q3','Q4'];
+  const atRisk = data.filter(c => c.churnRisk !== 'Low');
+  const stable = data.filter(c => c.churnRisk === 'Low');
+
+  // Base orders/qtr derived from each customer's freqDrop and lastOrder recency.
+  // Stable customers: base = 9 minus small noise from avg lastOrder.
+  // At-risk customers: start higher, decline each quarter proportional to avg freqDrop.
+  function stableBase(customers) {
+    if (!customers.length) return [null,null,null,null];
+    const avgLast = customers.reduce((s,c) => s+c.lastOrder, 0) / customers.length;
+    const base = Math.max(5, 10 - avgLast * 0.04);
+    return [base, base+0.2, base+0.1, base+0.3].map(v => +v.toFixed(1));
+  }
+  function atRiskBase(customers) {
+    if (!customers.length) return [null,null,null,null];
+    const avgDrop = customers.reduce((s,c) => s+c.freqDrop, 0) / customers.length;
+    const avgLast = customers.reduce((s,c) => s+c.lastOrder, 0) / customers.length;
+    const start = Math.max(2, 8 - avgLast * 0.03);
+    return [start, start - avgDrop*0.4, start - avgDrop*0.8, start - avgDrop*1.1].map(v => +Math.max(0.5, v).toFixed(1));
+  }
+
+  const stableData = stableBase(stable);
+  const atRiskData = atRiskBase(atRisk);
+
+  const ctx = document.getElementById('chart-frequency').getContext('2d');
+  const datasets = [];
+  if (stable.length) datasets.push({ label:`Stable (${stable.length} cust) avg orders/qtr`, data:stableData, borderColor:'#107c10', backgroundColor:'rgba(16,124,16,0.07)', tension:0.3, fill:true, pointRadius:4 });
+  if (atRisk.length) datasets.push({ label:`At-Risk (${atRisk.length} cust) avg orders/qtr`, data:atRiskData, borderColor:'#d83b01', backgroundColor:'rgba(216,59,1,0.07)', tension:0.3, fill:true, pointRadius:4 });
+
+  if (!datasets.length) return;
+  charts['frequency'] = new Chart(ctx, {
+    type:'line',
+    data: { labels, datasets },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ position:'top', labels:{ font:{size:11}, boxWidth:12 } } },
+      scales: { x:{ticks:{font:{size:10}},grid:{display:false}}, y:{min:0, ticks:{font:{size:10}},grid:{color:'#f0eeec'}} }
+    }
+  });
+}
+
+function renderRecency(data) {
+  kill('recency');
+  const exceed = data.filter(c => c.lastOrder > 60).length;
+  document.getElementById('badge-exceed').textContent = exceed > 0 ? `${exceed} customer${exceed>1?'s':''} exceed 60-day threshold` : 'All customers active';
+  const sorted = [...data].sort((a,b) => b.lastOrder-a.lastOrder).slice(0,10);
+  if (!sorted.length) return;
+  const ctx = document.getElementById('chart-recency').getContext('2d');
+  charts['recency'] = new Chart(ctx, {
+    type:'bar',
+    data: {
+      labels: sorted.map(c => c.name),
+      datasets:[{ label:'Days since last order', data: sorted.map(c => c.lastOrder),
+        backgroundColor: sorted.map(c => c.lastOrder>60 ? 'rgba(216,59,1,0.8)' : c.lastOrder>30 ? 'rgba(252,225,0,0.85)' : 'rgba(16,124,16,0.75)'),
+        borderRadius:2
+      }]
+    },
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false} },
+      scales: { x:{ticks:{font:{size:10}},grid:{color:'#f0eeec'}}, y:{ticks:{font:{size:10}},grid:{display:false}} }
+    }
+  });
+}
+
+function renderChurnTable(data) {
+  const at = [...data].filter(c => c.churnRisk !== 'Low')
+    .sort((a,b) => { const o={High:0,Med:1}; return o[a.churnRisk]-o[b.churnRisk]; });
+  const totalAtRisk = at.filter(c => c.churnRisk==='High').reduce((s,c) => s+c.revenue, 0);
+  document.getElementById('badge-churn-rev').textContent = at.length > 0 ? `${fmt(totalAtRisk)} high-risk revenue exposed` : 'No at-risk customers';
+  const tbody = document.getElementById('tbody-churn');
+  if (!at.length) { tbody.innerHTML = '<tr><td colspan="8" class="empty-state">No at-risk customers in this selection.</td></tr>'; return; }
+  const rc = r => r==='High'?'risk-high':r==='Med'?'risk-med':'risk-low';
+  tbody.innerHTML = at.map(c => {
+    const sel = selection.type === 'customer' && selection.value === c.id;
+    return `<tr onclick="setSelection('customer','${c.id}','Customer: ${c.name}')" style="cursor:pointer;${sel?'background:#deeffe;':''}">
+    <td><strong>${c.name}</strong></td><td>${c.segment}</td><td>${c.region}</td>
+    <td>${c.lastOrder} days ago</td>
+    <td style="color:${c.spendTrend<-20?'#d83b01':c.spendTrend<0?'#7a5700':'#107c10'}">${c.spendTrend>0?'+':''}${c.spendTrend}%</td>
+    <td>${c.freqDrop>0?'-'+c.freqDrop+' orders/qtr':'Stable'}</td>
+    <td><span class="risk-pill ${rc(c.churnRisk)}">${c.churnRisk}</span></td>
+    <td>${c.churnRisk==='High'?fmt(c.revenue):'─'}</td>
+  </tr>`;
+  }).join('');
+}
+
+function renderMarginTrend(data) {
+  kill('margin-trend');
+  if (!data.length) return;
+
+  // Weighted avg margin from filtered customers, then build a 12-month declining curve
+  // using each customer's margin trend direction as a weight on the slope.
+  const totalRev = data.reduce((s,c) => s+c.revenue, 0);
+  const wtdMargin = data.reduce((s,c) => s+c.margin*c.revenue, 0) / totalRev;
+  const downCount = data.filter(c => c.trend === 'down').length;
+  const slopePerMonth = -((downCount / data.length) * 0.38 + 0.05);
+
+  // Spread across 12 months: start slightly above wtdMargin, decline by slope each month
+  const midpoint = 6;
+  const months = Array.from({length:12}, (_,i) => +(wtdMargin + (i - midpoint) * slopePerMonth).toFixed(2));
+  const start = months[0].toFixed(1);
+  const end = months[11].toFixed(1);
+  document.getElementById('badge-margin-trend').textContent = `${start}% → ${end}% (${(end-start).toFixed(1)}pp)`;
+
+  const yMin = Math.floor(Math.min(...months) - 2);
+  const yMax = Math.ceil(Math.max(...months) + 2);
+
+  const ctx = document.getElementById('chart-margin-trend').getContext('2d');
+  charts['margin-trend'] = new Chart(ctx, {
+    type:'line',
+    data: { labels:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+      datasets:[{ label:'Gross Margin %', data:months, borderColor:'#d83b01', backgroundColor:'rgba(216,59,1,0.06)', tension:0.3, fill:true, pointRadius:3 }]
+    },
+    options: { responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{ x:{ticks:{font:{size:10}},grid:{display:false}}, y:{min:yMin,max:yMax,ticks:{font:{size:10},callback:v=>v+'%'},grid:{color:'#f0eeec'}} }
+    }
+  });
+}
+
+function renderMarginDrag(data) {
+  kill('margin-drag');
+  if (!data.length) return;
+
+  // Derive each drag component from actual customer attributes in filtered data
+  const n = data.length;
+  const avgDiscount = data.reduce((s,c) => s+c.discountRate, 0) / n;
+  const avgReturn   = data.reduce((s,c) => s+c.returnRate, 0) / n;
+  const complexHigh = data.filter(c => c.complexity === 'High').length / n;
+  const complexMed  = data.filter(c => c.complexity === 'Medium').length / n;
+  const smallOrders = data.filter(c => c.avgOrder === 'Small').length / n;
+
+  const drag = [
+    +(avgDiscount * 0.10).toFixed(2),                         // discounting drag
+    +(smallOrders * 1.8).toFixed(2),                          // small order surcharge
+    +(avgReturn * 0.08).toFixed(2),                           // return rate drag
+    +(complexHigh * 0.9 + complexMed * 0.3).toFixed(2),       // order complexity drag
+    +(avgDiscount * 0.012).toFixed(2),                        // freight concessions (small)
+  ];
+
+  const ctx = document.getElementById('chart-margin-drag').getContext('2d');
+  charts['margin-drag'] = new Chart(ctx, {
+    type:'bar',
+    data: {
+      labels:['Excessive Discounting','Small Order Surcharge','High Return Rate','Order Complexity','Freight Concessions'],
+      datasets:[{ label:'Margin impact (pp)', data:drag, backgroundColor:['#d83b01','#e67e22','#f39c12','#f1c40f','#bdc3c7'], borderRadius:3 }]
+    },
+    options: { indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:false}},
+      scales:{ x:{ticks:{font:{size:10},callback:v=>v+'pp'},grid:{color:'#f0eeec'}}, y:{ticks:{font:{size:10}},grid:{display:false}} }
+    }
+  });
+}
+
+function renderMarginTable(data) {
+  const sorted = [...data].sort((a,b) => a.netMargin-b.netMargin);
+  const highDrag = sorted.filter(c => c.netMargin < 10).length;
+  document.getElementById('badge-top5-drag').textContent = highDrag > 0 ? `${highDrag} customer${highDrag>1?'s':''} below 10% net margin` : 'Net margins acceptable';
+  const tbody = document.getElementById('tbody-margin');
+  if (!sorted.length) { tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No customers match the current filter selection.</td></tr>'; return; }
+  tbody.innerHTML = sorted.map(c => {
+    const cc = c.complexity==='High'?'risk-high':c.complexity==='Medium'?'risk-med':'risk-low';
+    const mc = c.netMargin < 5 ? 'margin-neg' : 'margin-pos';
+    const dc = c.discountRate > 15 ? 'margin-neg' : c.discountRate > 8 ? '' : 'margin-pos';
+    const rc = c.returnRate > 7 ? 'margin-neg' : '';
+    const impact = c.netMargin < 5 ? '⚠ High drag' : c.netMargin < 15 ? '⚡ Moderate drag' : '✓ Acceptable';
+    const sel = selection.type === 'customer' && selection.value === c.id;
+    return `<tr onclick="setSelection('customer','${c.id}','Customer: ${c.name}')" style="cursor:pointer;${sel?'background:#deeffe;':''}">
+      <td><strong>${c.name}</strong></td><td>${c.avgOrder}</td>
+      <td class="${dc}">${c.discountRate.toFixed(1)}%</td>
+      <td class="${rc}">${c.returnRate.toFixed(1)}%</td>
+      <td><span class="risk-pill ${cc}">${c.complexity}</span></td>
+      <td class="${mc}">${c.netMargin.toFixed(1)}%</td>
+      <td>${impact}</td>
+    </tr>`;
+  }).join('');
+}
+
+function updateInsight(data) {
+  const yr = state.year;
+  const highDiscount = data.filter(c => c.discountRate > 15).length;
+  const highReturn = data.filter(c => c.returnRate > 7).length;
+  const negMargin = data.filter(c => c.netMargin < 0).length;
+  let msg = `<strong>Key Finding — ${yr}</strong>`;
+  if (!data.length) { msg += ' No customers match this selection.'; }
+  else if (yr === '2022') { msg += ` Margins are solid but early warning signs are emerging. ${highDiscount} customer${highDiscount!==1?'s':''} already showing excessive discount dependency. Monitor closely.`; }
+  else if (yr === '2023') { msg += ` Margin erosion is accelerating. Discounting and return rates are the primary drivers. ${highReturn} customer${highReturn!==1?'s':''} have return rates above 7% — each one eroding 0.5–1.2pp of gross margin.`; }
+  else { msg += ` Revenue grows but margins shrink. ${negMargin > 0 ? negMargin + ' customer' + (negMargin>1?'s are':' is') + ' now margin-negative — revenue-positive but profit-destroying.' : 'No negative-margin customers yet, but the trend is clear.'} Behaviour-driven costs are compounding.`; }
+  document.getElementById('insight-text').innerHTML = msg;
+}
+
+renderAll();
+</script>
+</body>
+</html>
